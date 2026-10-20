@@ -20,3 +20,6 @@ desktop.ini
 tmp/
 
 *.tsbuildinfo
+/public/all-in.js
+/public/detector.js
+/public/api-extractor.js

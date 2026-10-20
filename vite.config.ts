@@ -30,7 +30,7 @@ async function buildAllIn(): Promise<void> {
     logLevel: 'warn',
     plugins: [stripUseStrictPlugin()],
     build: {
-      outDir: DIST,
+      outDir: PUBLIC,
       emptyOutDir: false,
       minify: false,
       target: 'chrome110',
@@ -54,7 +54,7 @@ async function buildDetector(): Promise<void> {
     logLevel: 'warn',
     plugins: [stripUseStrictPlugin()],
     build: {
-      outDir: DIST,
+      outDir: PUBLIC,
       emptyOutDir: false,
       minify: false,
       target: 'chrome110',
@@ -78,7 +78,7 @@ async function buildApiExtractor(): Promise<void> {
     logLevel: 'warn',
     plugins: [stripUseStrictPlugin()],
     build: {
-      outDir: DIST,
+      outDir: PUBLIC,
       emptyOutDir: false,
       minify: false,
       target: 'chrome110',
@@ -94,17 +94,30 @@ async function buildApiExtractor(): Promise<void> {
   })
 }
 
-function injectableScriptsPlugin(): Plugin {
+function copyToDistPlugin(): Plugin {
   return {
-    name: 'reconx:injectable-scripts',
+    name: 'reconx:copy-to-dist',
     apply: 'build',
-    async buildStart() {
-      await buildAllIn()
-      await buildDetector()
-      await buildApiExtractor()
+    async closeBundle() {
+      const fs = await import('node:fs')
+      const scripts = ['all-in.js', 'detector.js', 'api-extractor.js']
+      for (const script of scripts) {
+        const src = path.join(PUBLIC, script)
+        const dest = path.join(DIST, script)
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest)
+        }
+      }
     }
   }
 }
+
+// 在 Vite 配置加载前预先构建独立脚本，确保 CRX 插件能找到它们
+;(async () => {
+  await buildAllIn()
+  await buildDetector()
+  await buildApiExtractor()
+})()
 
 const manifest = defineManifest({
   manifest_version: 3,
@@ -146,7 +159,7 @@ export default defineConfig({
     AutoImport({ resolvers: [ElementPlusResolver()] }),
     Components({ resolvers: [ElementPlusResolver()] }),
     crx({ manifest }),
-    injectableScriptsPlugin()
+    copyToDistPlugin()
   ],
   build: {
     sourcemap: true,
