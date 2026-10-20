@@ -1,5 +1,7 @@
 // 统一导出中枢（自 lib/exporter.js 迁移为 ES 模块）
 // 在扩展页面上下文（popup/result/options）通过 <a download> 触发下载；不依赖 chrome.downloads，纯 DOM。
+import { generateBundleReportMarkdown } from './security-report'
+
 export const ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
 export const SEV_CN: Record<string, string> = { critical: '严重', high: '高危', medium: '中危', low: '低危', info: '提示', warn: '需核验', safe: '安全' }
 
@@ -300,4 +302,11 @@ export function parseJson(text: string): { ok: boolean; data?: any; error?: stri
   } catch (e: any) {
     return { ok: false, error: String((e && e.message) || e) }
   }
+}
+
+/** 导出综合报告 Markdown（含梭哈模式拦截统计、路由分析、API 提取、安全审计） */
+export function exportFullReport(bundle: any, pageUrl: string): void {
+  const content = generateBundleReportMarkdown(bundle, pageUrl)
+  const filename = buildFilename(bundle, 'md')
+  download(filename, content, 'text/markdown')
 }
