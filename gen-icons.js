@@ -1,8 +1,9 @@
-/* global self */
 // 生成三张纯 PNG 图标（雷达/放大镜风格），用 Node 内置 zlib，不依赖任何外部库。
-const fs = require('fs');
-const path = require('path');
-const zlib = require('zlib');
+import fs from 'node:fs'
+import path from 'node:path'
+import zlib from 'node:zlib'
+import { fileURLToPath } from 'node:url'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 function crc32(buf) {
   let table = crc32.table;
@@ -72,7 +73,8 @@ function makeIcon(size) {
   return png;
 }
 
-const outDir = path.join(__dirname, 'icons');
+const outDir = path.join(__dirname, 'public', 'icons');
+fs.mkdirSync(outDir, { recursive: true });
 for (const size of [16, 48, 128]) {
   fs.writeFileSync(path.join(outDir, `icon${size}.png`), makeIcon(size));
   console.log('wrote', `icon${size}.png`);
