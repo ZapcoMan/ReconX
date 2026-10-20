@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Recon Lens</title>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="dot"></span> Recon Lens</div>
+      <div class="host" id="host">—</div>
+    </header>
+
+    <div id="scope" class="scope"></div>
+
+    <div class="actions">
+      <button id="authorize" class="primary hidden">加入范围并授权</button>
+      <button id="collect" class="primary">开始收集</button>
+      <button id="probe" class="ghost" title="主动探测敏感路径（需先授权且在范围内）">主动探测</button>
+      <button id="result" class="ghost">打开详情</button>
+      <div class="exports">
+        导出：
+        <button data-fmt="json" class="tiny">JSON</button>
+        <button data-fmt="csv" class="tiny">CSV</button>
+        <button data-fmt="md" class="tiny">MD</button>
+      </div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div id="overview" class="overview hidden"></div>
+
+    <footer>
+      仅用于<b>已授权</b>目标（渗透测试 / 漏洞赏金 / OSINT / 自查）。命中皆为线索，需人工确认。
+      <a href="#" id="openOptions">设置与合规 ›</a>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

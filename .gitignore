@@ -1,0 +1,20 @@
+# 依赖与构建产物（本扩展无需构建，留作通用忽略）
+node_modules/
+dist/
+
+# 打包产物
+*.zip
+*.crx
+*.pem
+
+# 操作系统/编辑器杂项
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# 日志与临时
+*.log
+tmp/
