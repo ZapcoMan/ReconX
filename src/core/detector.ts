@@ -40,12 +40,14 @@ declare global {
     type ReconX_ReactFiberLike = { tag?: number; type?: unknown; stateNode?: unknown; child?: ReconX_ReactFiberLike | null; sibling?: ReconX_ReactFiberLike | null; return?: ReconX_ReactFiberLike | null; alternate?: ReconX_ReactFiberLike | null; memoizedState?: unknown; memoizedProps?: unknown }
     type ReconX_ReactRouterLike = { routes?: unknown[]; dataRoutes?: unknown; navigate?: (...args: any[]) => unknown; state?: Record<string, unknown> }
     type ReconX_ReactRouteConfigLike = { path?: string; id?: string; index?: boolean; children?: ReconX_ReactRouteConfigLike[]; routes?: ReconX_ReactRouteConfigLike[]; handle?: Record<string, unknown> }
+    type ReconX_VueDetectionResult = { detected: boolean; method: string; framework?: FrameworkKind; details?: Record<string, unknown>; errorMsg?: string }
     type ReconX_ModifiedRoute = { path?: string; name?: string }
     type ReconX_RouteEntry = { name?: string; path?: string; meta?: Record<string, any> }
     type ReconX_AnalysisLogEntry = { type: 'log' | 'warn' | 'error' | 'table'; message?: string; data?: unknown }
     type ReconX_RouterAnalysisResult = { vueDetected: boolean; routerDetected: boolean; framework?: FrameworkKind; vueVersion?: string | null; reactVersion?: string | null; routerLib?: string; routerVersion?: string | null; logs?: ReconX_AnalysisLogEntry[]; modifiedRoutes?: ReconX_ModifiedRoute[]; allRoutes?: ReconX_RouteEntry[]; routerBase?: string; pageAnalysis?: ReconX_PageAnalysisResult; currentPath?: string; error?: string; routeCount?: number }
     type ReconX_PageAnalysisResult = { detectedBasePath: string; commonPrefixes: ReconX_PrefixStat[] }
     type ReconX_PrefixStat = { prefix: string; count: number }
+    type ReconX_FullRouterAnalysis = ReconX_RouterAnalysisResult & { vueVersion: string | null; logs: ReconX_AnalysisLogEntry[]; modifiedRoutes: ReconX_ModifiedRoute[]; allRoutes: ReconX_RouteEntry[]; routerBase: string; pageAnalysis: ReconX_PageAnalysisResult }
 
     // 类型别名（兼容代码中不带前缀的引用）
     type RouteConfigLike = ReconX_RouteConfigLike;
@@ -53,7 +55,6 @@ declare global {
     type ReactFiberLike = ReconX_ReactFiberLike;
     type ReactRouterLike = ReconX_ReactRouterLike;
     type ModifiedRoute = ReconX_ModifiedRoute;
-    type RouteEntry = ReconX_RouteEntry;
     type RouterAnalysisResult = ReconX_RouterAnalysisResult;
     type ReactElementLike = Element & Record<string, unknown>;
 
