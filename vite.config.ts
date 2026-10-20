@@ -147,7 +147,8 @@ const manifest = defineManifest({
     {
       matches: ['<all_urls>'],
       js: ['src/extension/content.ts'],
-      run_at: 'document_idle'
+      run_at: 'document_start',
+      all_frames: true
     }
   ],
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" }

@@ -1,6 +1,16 @@
 // 与 background 的消息封装：把 chrome.runtime.sendMessage 的回调式统一 Promise 化。
 import type { Scope, Settings } from '../types'
 
+/** 页面侧实时状态快照：background 串行写入 chrome.storage.local 的 liveState 键，与采集结果分离 */
+export interface LiveSnapshot {
+  frameworkDetection?: any
+  routerAnalysis?: any
+  allInStatus?: any
+  apiExtractResult?: any
+  errors?: Record<string, string>
+  updatedAt?: number
+}
+
 export interface StateResponse {
   ok: boolean
   scope: Scope
@@ -8,10 +18,7 @@ export interface StateResponse {
   inScope: boolean
   hasCache: boolean
   lastBundle: any | null
-  frameworkDetection?: any
-  routerAnalysis?: any
-  allInStatus?: any
-  apiExtractResult?: any
+  live?: LiveSnapshot
 }
 export interface CollectResponse {
   ok: boolean

@@ -23,9 +23,9 @@ async function registerAllInContentScript(): Promise<void> {
       await chrome.scripting.unregisterContentScripts({ ids: [ALL_IN_SCRIPT_ID] })
     }
     const scope = await getScope()
-    const matches = scope.hosts.length
-      ? scope.hosts.map((h) => h.origin + '/*')
-      : ['<all_urls>']
+    const matches = scope.hosts.map((h) => h.origin + '/*')
+    // 允许域为空时只注销，绝不退化为全域注册
+    if (!matches.length) return
     await chrome.scripting.registerContentScripts([{
       id: ALL_IN_SCRIPT_ID,
       matches,
@@ -318,6 +318,13 @@ function buildRisks(headerReport: any, js: any): any[] {
 }
 
 // ---------------- 主动探测（需用户点击 + 范围内） ----------------
+/** 向 content script 下发一条指令，结果由页面经 content 回推；脚本未就绪时静默忽略 */
+function askPage(tabId: number, action: string): void {
+  try {
+    chrome.tabs.sendMessage(tabId, { action }).catch(() => { /* content script 未注入或非 http 页 */ })
+  } catch { /* */ }
+}
+
 async function injectAllIn(tabId: number): Promise<{ ok: boolean; injected: boolean; framework: string | null; error?: string }> {
   try {
     const ri = await detectRouterAndLive(tabId)
@@ -374,8 +381,10 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
       else routes = { applicable: false, reason: tech.decision.reason }
       if (tech.framework.vue || tech.framework.react) {
         allInResult = await injectAllIn(tabId)
-        chrome.tabs.sendMessage(tabId, { action: 'detectFramework' }).catch(() => { /* content script 可能未就绪 */ })
-        chrome.tabs.sendMessage(tabId, { action: 'analyzeRouter' }).catch(() => { /* content script 可能未就绪 */ })
+        askPage(tabId, 'detectFramework')
+        askPage(tabId, 'analyzeRouter')
+        askPage(tabId, 'extractApi')
+        askPage(tabId, 'getAllInStatus')
       }
     }
   } catch (e: any) {
@@ -444,61 +453,71 @@ async function collect(tabId: number): Promise<any> {
   return { ok: true, bundle }
 }
 
-// ---------------- 消息路由 ----------------
-const reconxQueue: Array<() => Promise<void>> = []
-let reconxProcessing = false
+// ---------------- 实时状态写入（独立 key，不污染采集结果） ----------------
+const liveQueue: Array<() => Promise<void>> = []
+let liveProcessing = false
 
-async function processReconxQueue(): Promise<void> {
-  if (reconxProcessing || reconxQueue.length === 0) return
-  reconxProcessing = true
-  while (reconxQueue.length > 0) {
-    const task = reconxQueue.shift()!
-    await task()
-  }
-  reconxProcessing = false
-}
-
-function enqueueReconx(fn: (bundle: any) => void): void {
-  reconxQueue.push(async () => {
-    let { lastBundle } = await chrome.storage.local.get('lastBundle')
-    if (!lastBundle) {
-      lastBundle = { meta: { collectedAt: Date.now() }, probes: { performed: false }, risks: [], tech: [], waf: [], headers: {}, js: { scanned: [], findings: [], inlineFindings: [], sourcemaps: [] }, links: { endpoints: [] }, resources: {} }
+async function processLiveQueue(): Promise<void> {
+  if (liveProcessing) return
+  liveProcessing = true
+  try {
+    while (liveQueue.length > 0) {
+      const task = liveQueue.shift()!
+      // 单条失败（典型为 storage 配额超限）只记日志，不能中断后续任务
+      try { await task() } catch (e) { console.error('[ReconX] live write failed:', e) }
     }
-    fn(lastBundle)
-    await chrome.storage.local.set({ lastBundle })
-  })
-  processReconxQueue()
+  } finally {
+    liveProcessing = false
+  }
 }
 
-chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
+function enqueueLive(patch: (s: LiveSnapshot) => void): void {
+  liveQueue.push(async () => {
+    const stored = await chrome.storage.local.get('liveState')
+    const next: LiveSnapshot = Object.assign({ updatedAt: Date.now() }, stored.liveState || {})
+    patch(next)
+    await chrome.storage.local.set({ liveState: next })
+  })
+  processLiveQueue()
+}
+
+async function getLiveState(): Promise<LiveSnapshot> {
+  const stored = await chrome.storage.local.get('liveState')
+  return (stored.liveState as LiveSnapshot) || {}
+}
+
+chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
   if (!msg) return
 
-  // ---- 处理 content.ts 推送的 {action: 'reconxXXX'} 消息 ----
+  // ---- content.ts 推送的 {action: 'reconxXXX'}：仅接受来自页面脚本的转发 ----
   if (msg.action && msg.action.startsWith('reconx')) {
+    if (!sender || !sender.tab) return
     switch (msg.action) {
       case 'reconxFrameworkDetectionResult':
-        enqueueReconx((b) => { b.frameworkDetection = msg.result })
+        enqueueLive((s) => { s.frameworkDetection = msg.result })
         break
       case 'reconxRouterAnalysisResult':
-        enqueueReconx((b) => { b.routerAnalysis = msg.result })
+        enqueueLive((s) => { s.routerAnalysis = msg.result })
         break
       case 'reconxAllInStatus':
-        enqueueReconx((b) => { b.allInStatus = msg.status })
+        enqueueLive((s) => { s.allInStatus = msg.status })
         break
       case 'reconxApiResult':
-        enqueueReconx((b) => { b.apiExtractResult = msg.result })
+        enqueueLive((s) => { s.apiExtractResult = msg.result })
         break
       case 'reconxApiProgress':
       case 'reconxApiError':
       case 'reconxRouterAnalysisError':
       case 'reconxDetectorError':
-        enqueueReconx((b) => { b[msg.action] = msg.result || msg.error })
+        enqueueLive((s) => {
+          s.errors = Object.assign({}, s.errors, { [msg.action]: msg.result || msg.error })
+        })
         break
     }
     return
   }
 
-  // ---- 原有 {type: 'XXX'} 消息处理 ----
+  // ---- UI 侧 {type: 'XXX'} 请求 ----
   if (!msg.type) return
   switch (msg.type) {
     case 'GET_STATE': {
@@ -506,16 +525,13 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
         const scope = await getScope()
         const settings = await getSettings()
         const { lastBundle } = await chrome.storage.local.get('lastBundle')
-        const b = lastBundle || null
+        const live = await getLiveState()
         sendResponse({
           ok: true, scope, settings,
           inScope: msg.host ? scope.hosts.some((h) => h.host === msg.host) : false,
           hasCache: msg.host ? !!((headersCache.get(msg.host) || { main: [] }).main.length) : false,
-          lastBundle: b,
-          frameworkDetection: b ? b.frameworkDetection : undefined,
-          routerAnalysis: b ? b.routerAnalysis : undefined,
-          allInStatus: b ? b.allInStatus : undefined,
-          apiExtractResult: b ? b.apiExtractResult : undefined
+          lastBundle: lastBundle || null,
+          live
         })
       })()
       return true
@@ -544,14 +560,19 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
       ;(async () => {
         const res = await runProbes(msg.origin, msg.host, msg.tabId)
         if (res.ok) {
-          enqueueReconx((b) => {
-            b.probes = { performed: true, results: res.results, routes: res.routes }
-            if (b.allInStatus) {
-              b.probes.allIn = b.allInStatus
-            } else {
-              b.probes.allIn = res.allIn
+          const live = await getLiveState()
+          const { lastBundle } = await chrome.storage.local.get('lastBundle')
+          // 无采集结果时不写探测结论，避免生成空壳 bundle
+          if (lastBundle) {
+            lastBundle.probes = {
+              performed: true,
+              results: res.results,
+              routes: res.routes,
+              allInStatus: live.allInStatus || null,
+              allIn: res.allIn
             }
-          })
+            await chrome.storage.local.set({ lastBundle })
+          }
         }
         sendResponse(res)
       })()

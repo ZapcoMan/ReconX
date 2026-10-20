@@ -429,7 +429,10 @@ export function generateFullReportMarkdown(data: FullReportData): string {
 
 /** 从 ReconBundle 中提取 FullReportData */
 export function bundleToReportData(bundle: ReconBundle, pageUrl: string): FullReportData {
-    const allInStatus: AllInStatus | null = (bundle.probes && bundle.probes.allIn) || null
+    const probes: any = bundle.probes || {}
+    // 页面回传的实时统计优先；executeScript 的 ACK 没有 injectedAt，不能当统计源
+    const allInCandidate: any = probes.allInStatus || probes.allIn || null
+    const allInStatus: AllInStatus | null = allInCandidate && allInCandidate.injectedAt ? allInCandidate : null
     const routerAnalysis = bundle.routes ? {
         framework: bundle.routes.framework || 'unknown',
         vueVersion: bundle.routes.vueVersion || undefined,
