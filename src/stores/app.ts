@@ -1,6 +1,7 @@
 // ReconX 共享状态（Pinia）：popup/result/options 各页持有实例；范围/设置/最近结果经 messaging 与 chrome.* 同步。
 import { defineStore } from 'pinia'
 import * as M from '../shared/messaging'
+import type { LiveSnapshot } from '../shared/messaging'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import type { ThemeId } from '../core/themes'
 import type { Scope, Settings } from '../types'
@@ -20,10 +21,7 @@ export const useAppStore = defineStore('app', {
     inScope: false,
     hasCache: false,
     lastBundle: null as any | null,
-    frameworkDetection: null as any | null,
-    routerAnalysis: null as any | null,
-    allInStatus: null as any | null,
-    apiExtractResult: null as any | null,
+    live: { updatedAt: 0 } as LiveSnapshot,
     busy: false,
     message: '' as string
   }),
@@ -51,10 +49,7 @@ export const useAppStore = defineStore('app', {
         this.inScope = st.inScope
         this.hasCache = st.hasCache
         this.lastBundle = st.lastBundle
-        this.frameworkDetection = st.frameworkDetection || null
-        this.routerAnalysis = st.routerAnalysis || null
-        this.allInStatus = st.allInStatus || null
-        this.apiExtractResult = st.apiExtractResult || null
+        this.live = st.live || { updatedAt: 0 }
       }
     },
     async refresh(): Promise<void> {
