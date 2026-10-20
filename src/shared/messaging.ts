@@ -8,6 +8,10 @@ export interface StateResponse {
   inScope: boolean
   hasCache: boolean
   lastBundle: any | null
+  frameworkDetection?: any
+  routerAnalysis?: any
+  allInStatus?: any
+  apiExtractResult?: any
 }
 export interface CollectResponse {
   ok: boolean

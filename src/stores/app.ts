@@ -20,6 +20,10 @@ export const useAppStore = defineStore('app', {
     inScope: false,
     hasCache: false,
     lastBundle: null as any | null,
+    frameworkDetection: null as any | null,
+    routerAnalysis: null as any | null,
+    allInStatus: null as any | null,
+    apiExtractResult: null as any | null,
     busy: false,
     message: '' as string
   }),
@@ -47,6 +51,10 @@ export const useAppStore = defineStore('app', {
         this.inScope = st.inScope
         this.hasCache = st.hasCache
         this.lastBundle = st.lastBundle
+        this.frameworkDetection = st.frameworkDetection || null
+        this.routerAnalysis = st.routerAnalysis || null
+        this.allInStatus = st.allInStatus || null
+        this.apiExtractResult = st.apiExtractResult || null
       }
     },
     async refresh(): Promise<void> {

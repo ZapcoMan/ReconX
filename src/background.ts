@@ -374,6 +374,8 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
       else routes = { applicable: false, reason: tech.decision.reason }
       if (tech.framework.vue || tech.framework.react) {
         allInResult = await injectAllIn(tabId)
+        chrome.tabs.sendMessage(tabId, { action: 'detectFramework' }).catch(() => { /* content script 可能未就绪 */ })
+        chrome.tabs.sendMessage(tabId, { action: 'analyzeRouter' }).catch(() => { /* content script 可能未就绪 */ })
       }
     }
   } catch (e: any) {
@@ -443,41 +445,56 @@ async function collect(tabId: number): Promise<any> {
 }
 
 // ---------------- 消息路由 ----------------
+const reconxQueue: Array<() => Promise<void>> = []
+let reconxProcessing = false
+
+async function processReconxQueue(): Promise<void> {
+  if (reconxProcessing || reconxQueue.length === 0) return
+  reconxProcessing = true
+  while (reconxQueue.length > 0) {
+    const task = reconxQueue.shift()!
+    await task()
+  }
+  reconxProcessing = false
+}
+
+function enqueueReconx(fn: (bundle: any) => void): void {
+  reconxQueue.push(async () => {
+    let { lastBundle } = await chrome.storage.local.get('lastBundle')
+    if (!lastBundle) {
+      lastBundle = { meta: { collectedAt: Date.now() }, probes: { performed: false }, risks: [], tech: [], waf: [], headers: {}, js: { scanned: [], findings: [], inlineFindings: [], sourcemaps: [] }, links: { endpoints: [] }, resources: {} }
+    }
+    fn(lastBundle)
+    await chrome.storage.local.set({ lastBundle })
+  })
+  processReconxQueue()
+}
+
 chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
   if (!msg) return
 
   // ---- 处理 content.ts 推送的 {action: 'reconxXXX'} 消息 ----
   if (msg.action && msg.action.startsWith('reconx')) {
-    ;(async () => {
-      const { lastBundle } = await chrome.storage.local.get('lastBundle')
-      if (!lastBundle) return
-
-      switch (msg.action) {
-        case 'reconxFrameworkDetectionResult':
-          lastBundle.frameworkDetection = msg.result
-          await chrome.storage.local.set({ lastBundle })
-          break
-        case 'reconxRouterAnalysisResult':
-          lastBundle.routerAnalysis = msg.result
-          await chrome.storage.local.set({ lastBundle })
-          break
-        case 'reconxAllInStatus':
-          lastBundle.allInStatus = msg.status
-          await chrome.storage.local.set({ lastBundle })
-          break
-        case 'reconxApiResult':
-          lastBundle.apiExtractResult = msg.result
-          await chrome.storage.local.set({ lastBundle })
-          break
-        case 'reconxApiProgress':
-        case 'reconxApiError':
-        case 'reconxRouterAnalysisError':
-        case 'reconxDetectorError':
-          lastBundle[msg.action] = msg.result || msg.error
-          await chrome.storage.local.set({ lastBundle })
-          break
-      }
-    })()
+    switch (msg.action) {
+      case 'reconxFrameworkDetectionResult':
+        enqueueReconx((b) => { b.frameworkDetection = msg.result })
+        break
+      case 'reconxRouterAnalysisResult':
+        enqueueReconx((b) => { b.routerAnalysis = msg.result })
+        break
+      case 'reconxAllInStatus':
+        enqueueReconx((b) => { b.allInStatus = msg.status })
+        break
+      case 'reconxApiResult':
+        enqueueReconx((b) => { b.apiExtractResult = msg.result })
+        break
+      case 'reconxApiProgress':
+      case 'reconxApiError':
+      case 'reconxRouterAnalysisError':
+      case 'reconxDetectorError':
+        enqueueReconx((b) => { b[msg.action] = msg.result || msg.error })
+        break
+    }
     return
   }
 
@@ -489,7 +506,17 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
         const scope = await getScope()
         const settings = await getSettings()
         const { lastBundle } = await chrome.storage.local.get('lastBundle')
-        sendResponse({ ok: true, scope, settings, inScope: msg.host ? scope.hosts.some((h) => h.host === msg.host) : false, hasCache: msg.host ? !!((headersCache.get(msg.host) || { main: [] }).main.length) : false, lastBundle: lastBundle || null })
+        const b = lastBundle || null
+        sendResponse({
+          ok: true, scope, settings,
+          inScope: msg.host ? scope.hosts.some((h) => h.host === msg.host) : false,
+          hasCache: msg.host ? !!((headersCache.get(msg.host) || { main: [] }).main.length) : false,
+          lastBundle: b,
+          frameworkDetection: b ? b.frameworkDetection : undefined,
+          routerAnalysis: b ? b.routerAnalysis : undefined,
+          allInStatus: b ? b.allInStatus : undefined,
+          apiExtractResult: b ? b.apiExtractResult : undefined
+        })
       })()
       return true
     }
@@ -517,15 +544,14 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
       ;(async () => {
         const res = await runProbes(msg.origin, msg.host, msg.tabId)
         if (res.ok) {
-          const { lastBundle } = await chrome.storage.local.get('lastBundle')
-          if (lastBundle) {
-            lastBundle.probes = { performed: true, results: res.results, routes: res.routes, allIn: res.allIn }
-            const { allInStatus } = lastBundle
-            if (allInStatus) {
-              lastBundle.probes.allInStatus = allInStatus
+          enqueueReconx((b) => {
+            b.probes = { performed: true, results: res.results, routes: res.routes }
+            if (b.allInStatus) {
+              b.probes.allIn = b.allInStatus
+            } else {
+              b.probes.allIn = res.allIn
             }
-            await chrome.storage.local.set({ lastBundle })
-          }
+          })
         }
         sendResponse(res)
       })()
