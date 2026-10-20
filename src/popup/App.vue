@@ -7,31 +7,6 @@
       <el-button class="gear" text :icon="Setting" title="设置" @click="openOptions" />
     </div>
 
-    <div class="themebrew">
-      <el-select v-model="themeId" size="small" @change="onTheme" style="width: 100%">
-        <el-option
-          v-for="id in THEME_ORDER"
-          :key="id"
-          :label="THEME_META[id].label"
-          :value="id"
-        >
-          <span style="display: flex; align-items: center; gap: 8px">
-            <span
-              :style="{
-                display: 'inline-block',
-                width: '14px',
-                height: '14px',
-                borderRadius: '3px',
-                background: `linear-gradient(135deg, ${THEME_META[id].swatch[0]} 34%, ${THEME_META[id].swatch[1]} 34% 66%, ${THEME_META[id].swatch[2]} 66%)`
-              }"
-            />
-            {{ THEME_META[id].label }}
-            <span style="color: var(--rx-muted); font-size: 11px">{{ THEME_META[id].desc }}</span>
-          </span>
-        </el-option>
-      </el-select>
-    </div>
-
     <div class="host">{{ store.active.host || '（无可用页面）' }}</div>
 
     <el-space direction="vertical" fill class="acts" :size="8">
@@ -61,18 +36,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { Setting, ArrowDown } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
 import { exportBundle } from '../core/exporter'
-import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 
 const store = useAppStore()
-const themeId = ref<ThemeId>(store.settings.theme)
 
 onMounted(async () => {
   await store.refresh()
-  themeId.value = store.settings.theme
 })
 
 function openOptions(): void {
@@ -90,9 +62,6 @@ async function onProbes(): Promise<void> {
 function onExport(fmt: string): void {
   if (store.lastBundle) exportBundle(store.lastBundle, fmt)
 }
-async function onTheme(val: ThemeId): Promise<void> {
-  await store.setTheme(val)
-}
 </script>
 
 <style scoped>
@@ -107,8 +76,7 @@ async function onTheme(val: ThemeId): Promise<void> {
 .head { display: flex; align-items: center; gap: 8px; }
 .title { font-family: var(--rx-font-head); font-weight: 700; font-size: 15px; color: var(--rx-accent); text-shadow: var(--rx-glow); }
 .gear { margin-left: auto; }
-.themebrew { margin: 10px 0 4px; }
-.host { margin: 6px 0 10px; color: var(--rx-muted); word-break: break-all; font-family: var(--rx-font); font-size: 12px; }
+.host { margin: 8px 0 10px; color: var(--rx-muted); word-break: break-all; font-family: var(--rx-font); font-size: 12px; }
 .acts { width: 100%; }
 .acts :deep(.el-button) { width: 100%; margin-left: 0; }
 .msg { margin-top: 10px; }
