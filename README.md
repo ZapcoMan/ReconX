@@ -3,9 +3,10 @@
 <div align="center">
 
 ![Manifest V3](https://img.shields.io/badge/Manifest%20V3-Extension-2dd4bf)
-![Native JS](https://img.shields.io/badge/Build-No--build%20%2F%20Native%20JS-blue)
-![Chrome](https://img.shields.io/badge/Chrome-111%2B-4285F4)
-![Verification](https://img.shields.io/badge/Logic-node--verified-success)
+![Vue 3](https://img.shields.io/badge/Vue-3.x-42b883)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
+![Element Plus](https://img.shields.io/badge/UI-Element--Plus-409eff)
+![Vite](https://img.shields.io/badge/Build-Vite%20%2B%20crxjs-646cff)
 ![License](https://img.shields.io/badge/License-GPL--v2-yellow)
 
 **面向已授权目标的浏览器侦察 / 信息收集扩展**
@@ -18,7 +19,7 @@
 
 ## 📋 项目简介
 
-ReconX 是一个 Chrome（Manifest V3）扩展，把 **recon（侦察/信息收集）** 与前端技术栈/路由/API 分析能力整合为统一采集与统一导出，面向**渗透测试 / 漏洞赏金 / OSINT / 自有站点自查**。内置「允许域白名单 + 逐目标 host 授权」范围护栏；无构建、原生 JavaScript，可直接加载已解压目录。
+ReconX 是一个 Chrome（Manifest V3）扩展，把 **recon（侦察/信息收集）** 与前端技术栈/路由/API 分析能力整合为统一采集与统一导出，面向**渗透测试 / 漏洞赏金 / OSINT / 自有站点自查**。内置「允许域白名单 + 逐目标 host 授权」范围护栏。基于 **Vue 3 + TypeScript + Vite + @crxjs/vite-plugin + Element Plus** 构建，`npm run build` 后加载已解压的 `dist/` 目录。
 
 ### ✨ 核心特性
 
@@ -35,21 +36,27 @@ ReconX 是一个 Chrome（Manifest V3）扩展，把 **recon（侦察/信息收�
 
 | 分类 | 技术 |
 |------|------|
-| **运行环境** | Manifest V3、Chrome 111+（`world: MAIN`）、Service Worker |
-| **语言** | 原生 JavaScript（无框架、无构建、无第三方运行时依赖） |
-| **能力模块** | 指纹/审计/技术栈合并/Dork/测绘/导出等规则库（`lib/*.js`） |
-| **图标生成** | Node 内置模块（`fs`/`path`/`zlib`），无依赖 |
-| **验证** | `node --check` 静态校验 + `node -e` 纯逻辑就地验证 |
+| **运行环境** | Manifest V3、Chrome 111+（`world: MAIN`）、ES module Service Worker |
+| **UI / 框架** | Vue 3（Composition API）+ Element Plus（按需自动导入）+ Pinia |
+| **语言 / 构建** | TypeScript + Vite + @crxjs/vite-plugin + vue-tsc |
+| **能力模块** | `src/core/*.ts` 规则库与只读探测；`src/background.ts` 中枢；`src/{popup,result,options}` 页面 |
+| **验证** | `vue-tsc --noEmit` + `vite build` + esbuild 打包后 Node 行为断言 |
 
 ---
 
 ## 🚀 快速开始
 
-### ⚡ 加载扩展（开发者模式）
+### ⚡ 构建并加载扩展
+
+```bash
+npm install          # 安装依赖（npmmirror 源）
+npm run build        # vue-tsc 类型检查 + vite build → 产出 dist/
+```
 
 1. 打开 `chrome://extensions`，开启右上角「开发者模式」。
-2. 点「加载已解压的扩展程序」，选择本目录 **`ReconX/`**。
+2. 点「加载已解压的扩展程序」，选择构建产物目录 **`dist/`**。
 3. 需要 Chrome 111+（旧版本对 `window` 全局读取优雅降级、跳过该项）。
+4. 开发热更新：`npm run dev`（@crxjs 提供 HMR）。
 
 ### 🪜 使用流程
 
@@ -75,9 +82,10 @@ ReconX 是一个 Chrome（Manifest V3）扩展，把 **recon（侦察/信息收�
 
 | 层级 | 方式 | 状态 |
 |------|------|------|
-| 语法/清单 | `node --check` 全部 JS、`manifest.json` 解析 | ✅ |
-| 纯逻辑 | `node -e` 对指纹/分级/密钥/响应头/路由URL/API/审计/技术栈/导出实跑断言 | ✅ |
-| 运行时 | 注入/采集/剪贴板/UI 渲染 | ⚠️ 需 Chrome 实测 |
+| 类型 | `vue-tsc --noEmit`（src 全量，含 core 与页面） | ✅ |
+| 构建 | `vite build` + @crxjs（manifest/SW/三页/war 全部产出） | ✅ |
+| 纯逻辑 | esbuild 打包 `src/core` 后 Node 运行 26 项断言（含只读探测五适配器） | ✅ |
+| 运行时 | 注入/采集/剪贴板/UI 渲染 | ⚠️ 需在 Chrome 加载 `dist/` 实测 |
 
 详见：[docs/已知限制与运行验证.md](docs/已知限制与运行验证.md)
 
@@ -126,4 +134,4 @@ ReconX 整合、参考了以下开源项目，谨向其作者致谢，并遵循�
 ---
 
 *最后更新时间：2026-10-21*
-*本轮更新：以模板风格重写 README，深度内容下沉至 `docs/` 中文文档*
+*本轮更新：架构重构为 Vue 3 + TypeScript + Vite + @crxjs + Element Plus + Pinia；core 逻辑库 TS 化为 `src/core`，三页重写为 Vue SFC*
