@@ -12,6 +12,33 @@ import type { Scope, Settings } from './types'
 
 const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' }
 
+// ---------------- 常驻 Content Script 注册（document_start 时机注入 all-in.js） ----------------
+const ALL_IN_SCRIPT_ID = 'reconx-all-in-script'
+
+async function registerAllInContentScript(): Promise<void> {
+  try {
+    const existing = await chrome.scripting.getRegisteredContentScripts()
+    const already = existing.find((s) => s.id === ALL_IN_SCRIPT_ID)
+    if (already) {
+      await chrome.scripting.unregisterContentScripts({ ids: [ALL_IN_SCRIPT_ID] })
+    }
+    const scope = await getScope()
+    const matches = scope.hosts.length
+      ? scope.hosts.map((h) => h.origin + '/*')
+      : ['<all_urls>']
+    await chrome.scripting.registerContentScripts([{
+      id: ALL_IN_SCRIPT_ID,
+      matches,
+      js: ['all-in.js'],
+      runAt: 'document_start',
+      world: 'MAIN',
+      allFrames: true
+    }])
+  } catch (e: any) {
+    console.error('[ReconX] registerContentScripts failed:', e)
+  }
+}
+
 // ---------------- 范围（允许域白名单） ----------------
 async function getScope(): Promise<Scope> {
   const { scope } = await chrome.storage.local.get('scope')
@@ -25,6 +52,7 @@ async function addHost(host: string, origin: string, note?: string): Promise<Sco
   if (!s.hosts.some((h) => h.host === host)) {
     s.hosts.push({ host, origin, addedAt: Date.now(), note: note || '' })
     await saveScope(s)
+    registerAllInContentScript()
   }
   return s
 }
@@ -32,6 +60,7 @@ async function removeHost(host: string): Promise<Scope> {
   const s = await getScope()
   s.hosts = s.hosts.filter((h) => h.host !== host)
   await saveScope(s)
+  registerAllInContentScript()
   return s
 }
 async function getSettings(): Promise<Settings> {
@@ -415,7 +444,45 @@ async function collect(tabId: number): Promise<any> {
 
 // ---------------- 消息路由 ----------------
 chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
-  if (!msg || !msg.type) return
+  if (!msg) return
+
+  // ---- 处理 content.ts 推送的 {action: 'reconxXXX'} 消息 ----
+  if (msg.action && msg.action.startsWith('reconx')) {
+    ;(async () => {
+      const { lastBundle } = await chrome.storage.local.get('lastBundle')
+      if (!lastBundle) return
+
+      switch (msg.action) {
+        case 'reconxFrameworkDetectionResult':
+          lastBundle.frameworkDetection = msg.result
+          await chrome.storage.local.set({ lastBundle })
+          break
+        case 'reconxRouterAnalysisResult':
+          lastBundle.routerAnalysis = msg.result
+          await chrome.storage.local.set({ lastBundle })
+          break
+        case 'reconxAllInStatus':
+          lastBundle.allInStatus = msg.status
+          await chrome.storage.local.set({ lastBundle })
+          break
+        case 'reconxApiResult':
+          lastBundle.apiExtractResult = msg.result
+          await chrome.storage.local.set({ lastBundle })
+          break
+        case 'reconxApiProgress':
+        case 'reconxApiError':
+        case 'reconxRouterAnalysisError':
+        case 'reconxDetectorError':
+          lastBundle[msg.action] = msg.result || msg.error
+          await chrome.storage.local.set({ lastBundle })
+          break
+      }
+    })()
+    return
+  }
+
+  // ---- 原有 {type: 'XXX'} 消息处理 ----
+  if (!msg.type) return
   switch (msg.type) {
     case 'GET_STATE': {
       ;(async () => {
@@ -451,7 +518,14 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
         const res = await runProbes(msg.origin, msg.host, msg.tabId)
         if (res.ok) {
           const { lastBundle } = await chrome.storage.local.get('lastBundle')
-          if (lastBundle) { lastBundle.probes = { performed: true, results: res.results, routes: res.routes }; await chrome.storage.local.set({ lastBundle }) }
+          if (lastBundle) {
+            lastBundle.probes = { performed: true, results: res.results, routes: res.routes, allIn: res.allIn }
+            const { allInStatus } = lastBundle
+            if (allInStatus) {
+              lastBundle.probes.allInStatus = allInStatus
+            }
+            await chrome.storage.local.set({ lastBundle })
+          }
         }
         sendResponse(res)
       })()
@@ -462,9 +536,29 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
       sendResponse({ ok: true })
       return
     }
+    case 'FORWARD_TO_CONTENT': {
+      ;(async () => {
+        if (!msg.tabId) { sendResponse({ ok: false, error: 'no-tabId' }); return }
+        try {
+          const resp = await chrome.tabs.sendMessage(msg.tabId, {
+            action: msg.contentAction,
+            forceRefresh: msg.forceRefresh || false
+          })
+          sendResponse({ ok: true, response: resp })
+        } catch (e: any) {
+          sendResponse({ ok: false, error: String((e && e.message) || e) })
+        }
+      })()
+      return true
+    }
   }
 })
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get('settings').then((d) => { if (!d.settings) chrome.storage.local.set({ settings: DEFAULT_SETTINGS }) })
+  registerAllInContentScript()
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  registerAllInContentScript()
 })

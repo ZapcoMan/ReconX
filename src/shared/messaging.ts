@@ -40,3 +40,21 @@ export const setSettings = (patch: Partial<Settings>): Promise<{ ok: boolean }> 
 export const collect = (tabId: number): Promise<CollectResponse> => send<CollectResponse>({ type: 'COLLECT', tabId })
 export const runProbes = (origin: string, host: string, tabId: number): Promise<ProbesResponse> => send<ProbesResponse>({ type: 'RUN_PROBES', origin, host, tabId })
 export const openResult = (): Promise<{ ok: boolean }> => send({ type: 'OPEN_RESULT' })
+
+/** 向指定 tab 的 content script 发送指令（detectFramework / analyzeRouter / getAllInStatus / extractApi） */
+export function sendToContent<T = any>(tabId: number, action: string, extra?: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, { action, ...extra }, (resp) => {
+        resolve((resp || { ok: false, error: 'no-response' }) as T)
+      })
+    } catch (e: any) {
+      resolve({ ok: false, error: String((e && e.message) || e) } as unknown as T)
+    }
+  })
+}
+
+/** 通过 background 转发指令到 content script（popup/result/options 统一入口） */
+export function forwardToContent<T = any>(tabId: number, action: string, extra?: Record<string, unknown>): Promise<T> {
+  return send<T>({ type: 'FORWARD_TO_CONTENT', tabId, contentAction: action, ...extra })
+}
