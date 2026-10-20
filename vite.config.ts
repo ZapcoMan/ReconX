@@ -46,12 +46,62 @@ async function buildAllIn(): Promise<void> {
   })
 }
 
-function allInScriptPlugin(): Plugin {
+async function buildDetector(): Promise<void> {
+  const { build } = await import('vite')
+  await build({
+    configFile: false,
+    publicDir: false,
+    logLevel: 'warn',
+    plugins: [stripUseStrictPlugin()],
+    build: {
+      outDir: PUBLIC,
+      emptyOutDir: false,
+      minify: false,
+      target: 'chrome110',
+      rollupOptions: {
+        treeshake: false,
+        input: path.join(ROOT, 'src', 'core', 'detector.ts'),
+        output: {
+          format: 'iife',
+          entryFileNames: 'detector.js'
+        }
+      }
+    }
+  })
+}
+
+async function buildApiExtractor(): Promise<void> {
+  const { build } = await import('vite')
+  await build({
+    configFile: false,
+    publicDir: false,
+    logLevel: 'warn',
+    plugins: [stripUseStrictPlugin()],
+    build: {
+      outDir: PUBLIC,
+      emptyOutDir: false,
+      minify: false,
+      target: 'chrome110',
+      rollupOptions: {
+        treeshake: false,
+        input: path.join(ROOT, 'src', 'core', 'api-extractor.ts'),
+        output: {
+          format: 'iife',
+          entryFileNames: 'api-extractor.js'
+        }
+      }
+    }
+  })
+}
+
+function injectableScriptsPlugin(): Plugin {
   return {
-    name: 'reconx:all-in-script',
+    name: 'reconx:injectable-scripts',
     apply: 'build',
     async buildStart() {
       await buildAllIn()
+      await buildDetector()
+      await buildApiExtractor()
     }
   }
 }
@@ -76,7 +126,7 @@ const manifest = defineManifest({
   host_permissions: [],
   web_accessible_resources: [
     {
-      resources: ['src/result/result.html', 'all-in.js'],
+      resources: ['src/result/result.html', 'all-in.js', 'detector.js', 'api-extractor.js'],
       matches: ['<all_urls>']
     }
   ],
@@ -96,7 +146,7 @@ export default defineConfig({
     AutoImport({ resolvers: [ElementPlusResolver()] }),
     Components({ resolvers: [ElementPlusResolver()] }),
     crx({ manifest }),
-    allInScriptPlugin()
+    injectableScriptsPlugin()
   ],
   build: {
     sourcemap: true,
