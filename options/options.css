@@ -23,3 +23,16 @@ button.tiny { padding: 4px 8px; font-size: 12px; float: right; }
 .list li { padding: 8px 0; border-bottom: 1px dashed var(--line); overflow: hidden; }
 .list.mono li { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
 .muted { color: var(--muted); font-size: 12px; }
+/* polish */
+body { background: radial-gradient(140% 120% at 50% -10%, #13202e 0%, var(--bg) 50%); }
+h1 { color: var(--accent); }
+.card { transition: box-shadow .15s, border-color .15s; }
+.card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, .25); border-color: #2c3b52; }
+button { transition: border-color .15s, background .15s, transform .05s; }
+button:hover { background: #1c2b3a; }
+button:active { transform: translateY(1px); }
+button.danger:hover { background: #4a1616; border-color: var(--red); }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+::-webkit-scrollbar { width: 11px; }
+::-webkit-scrollbar-thumb { background: #24344a; border-radius: 8px; }
+::selection { background: rgba(45, 212, 191, .28); }

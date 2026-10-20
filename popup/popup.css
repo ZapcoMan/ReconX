@@ -69,3 +69,13 @@ footer a { color: var(--accent); float: right; text-decoration: none; }
 #openOptions:hover { background: rgba(45, 212, 191, .26); box-shadow: 0 0 10px rgba(45, 212, 191, .3); }
 #openOptions svg { width: 14px; height: 14px; fill: currentColor; }
 .hidden { display: none !important; }
+/* polish */
+body { background: radial-gradient(120% 120% at 50% 0%, #14202e 0%, var(--bg) 60%); }
+header { background: linear-gradient(180deg, #12202f, #0f1620); }
+.overview .chip { transition: transform .12s, border-color .12s; }
+.overview .chip:hover { transform: translateY(-1px); border-color: var(--accent); }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #24344a; border-radius: 8px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #2e415c; }
+::selection { background: rgba(45, 212, 191, .28); }
