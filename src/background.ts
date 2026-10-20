@@ -434,7 +434,7 @@ chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
       return true
     }
     case 'OPEN_RESULT': {
-      chrome.tabs.create({ url: chrome.runtime.getURL('result/result.html') })
+      chrome.tabs.create({ url: chrome.runtime.getURL('src/result/result.html') })
       sendResponse({ ok: true })
       return
     }

@@ -23,6 +23,12 @@ const manifest = defineManifest({
   optional_permissions: [],
   optional_host_permissions: ['<all_urls>'],
   host_permissions: [],
+  web_accessible_resources: [
+    {
+      resources: ['src/result/result.html'],
+      matches: ['<all_urls>']
+    }
+  ],
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" }
 })
 
@@ -33,5 +39,10 @@ export default defineConfig({
     Components({ resolvers: [ElementPlusResolver()] }),
     crx({ manifest })
   ],
-  build: { sourcemap: true }
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      input: { result: 'src/result/result.html' }
+    }
+  }
 })
