@@ -137,6 +137,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { applyTheme, resolveTheme } from '../shared/theme'
 import { listPackage, toSearchItems } from '../core/dork-library'
 import { PLATFORMS, ASSET_MODES, buildAsset } from '../core/asset-search'
 const bundle = ref<any>(null)
@@ -149,7 +150,8 @@ const techRows = computed(() => {
 })
 
 onMounted(async () => {
-  const { lastBundle } = await chrome.storage.local.get('lastBundle')
+  const { lastBundle, settings } = await chrome.storage.local.get(['lastBundle', 'settings'])
+  applyTheme(resolveTheme(settings && settings.theme))
   bundle.value = lastBundle || null
 })
 
@@ -205,12 +207,12 @@ function selectPre(e: MouseEvent): void {
 </script>
 
 <style scoped>
-.res { padding: 18px 22px 40px; font: 14px/1.6 system-ui, 'Microsoft YaHei', sans-serif; color: #1f2937; max-width: 1180px; margin: 0 auto; }
+.res { max-width: 1180px; margin: 0 auto; padding: 18px 22px 40px; font: 14px/1.6 var(--rx-font); color: var(--rx-text); }
 .bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.bar h1 { font-size: 18px; margin: 0; color: #0d9488; }
-.u { flex: 1; color: #64748b; font-family: Consolas, monospace; font-size: 12px; word-break: break-all; }
-h3 { margin: 18px 0 8px; font-size: 14px; color: #334155; }
-.tip { color: #64748b; font-size: 12px; margin-bottom: 8px; }
-.empty { padding: 40px; text-align: center; color: #94a3b8; }
-.rawjson { background: #0f1620; color: #d7e2ee; padding: 14px; border-radius: 8px; max-height: 560px; overflow: auto; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; cursor: text; }
+.bar h1 { font-family: var(--rx-font-head); font-size: 18px; margin: 0; color: var(--rx-accent); text-shadow: var(--rx-glow); }
+.u { flex: 1; color: var(--rx-muted); font-family: var(--rx-font); font-size: 12px; word-break: break-all; }
+h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
+.tip { color: var(--rx-muted); font-size: 12px; margin-bottom: 8px; }
+.empty { padding: 40px; text-align: center; color: var(--rx-muted); }
+.rawjson { background: var(--rx-code-bg); color: var(--rx-text); padding: 14px; border-radius: 8px; box-shadow: var(--rx-glow); max-height: 560px; overflow: auto; font-family: var(--rx-font); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; cursor: text; }
 </style>

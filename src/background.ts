@@ -10,7 +10,7 @@ import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
 import type { Scope, Settings } from './types'
 
-const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5 }
+const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' }
 
 // ---------------- 范围（允许域白名单） ----------------
 async function getScope(): Promise<Scope> {

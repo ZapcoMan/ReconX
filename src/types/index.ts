@@ -79,6 +79,7 @@ export interface Settings {
   activeProbe: boolean
   maxJsFiles: number
   maxConcurrent: number
+  theme: 'dark' | 'light' | 'geek'
 }
 
 export interface TechItem {

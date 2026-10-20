@@ -3,6 +3,20 @@
     <h1>ReconX 设置与范围管理</h1>
 
     <section>
+      <h2>外观主题</h2>
+      <div class="theme-row">
+        <el-segmented v-model="theme" :options="themeOptions" @change="changeTheme" />
+      </div>
+      <div class="swatches">
+        <div v-for="id in THEME_ORDER" :key="id" class="swatch">
+          <span class="dots"><i v-for="(c, i) in THEME_META[id].swatch" :key="i" :style="{ background: c }"></i></span>
+          <b>{{ THEME_META[id].label }}</b>
+          <span class="desc">{{ THEME_META[id].desc }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <h2>允许域（仅这些主机可采集/探测）</h2>
       <el-table :data="hosts" size="small" empty-text="尚无允许域，请在弹窗对目标页点“授权并加入范围”">
         <el-table-column prop="host" label="主机" />
@@ -35,15 +49,31 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ScopeHost, Settings } from '../types'
+import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
+import { applyTheme, resolveTheme } from '../shared/theme'
 
 const hosts = ref<ScopeHost[]>([])
-const settings = reactive<Settings>({ activeProbe: false, maxJsFiles: 25, maxConcurrent: 5 })
+const settings = reactive<Settings>({ activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' })
+const theme = ref<ThemeId>('dark')
+const themeOptions = THEME_ORDER.map((id) => ({ label: THEME_META[id].label, value: id }))
 
 onMounted(async () => {
   const { scope, settings: s } = await chrome.storage.local.get(['scope', 'settings'])
   if (scope && Array.isArray(scope.hosts)) hosts.value = scope.hosts
-  Object.assign(settings, { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5 }, s || {})
+  Object.assign(settings, { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' }, s || {})
+  theme.value = resolveTheme(settings.theme)
+  applyTheme(theme.value)
 })
+
+async function persist(): Promise<void> {
+  await chrome.storage.local.set({ settings: { ...settings } })
+}
+
+function changeTheme(id: ThemeId): void {
+  settings.theme = id
+  applyTheme(id)
+  void persist()
+}
 
 async function remove(row: any): Promise<void> {
   const next = hosts.value.filter((h) => h.host !== row.host)
@@ -54,7 +84,7 @@ async function remove(row: any): Promise<void> {
 }
 
 async function save(): Promise<void> {
-  await chrome.storage.local.set({ settings: { ...settings } })
+  await persist()
   ElMessage.success('设置已保存')
 }
 
@@ -74,9 +104,15 @@ async function revokeAll(): Promise<void> {
 </script>
 
 <style scoped>
-.opt { max-width: 880px; margin: 0 auto; padding: 28px 24px 60px; font: 14px/1.6 system-ui, 'Microsoft YaHei', sans-serif; color: #1f2937; }
-h1 { font-size: 20px; color: #0d9488; }
-h2 { font-size: 15px; margin: 22px 0 10px; border-left: 3px solid #0d9488; padding-left: 8px; }
+.opt { max-width: 880px; margin: 0 auto; padding: 28px 24px 60px; font: 14px/1.6 var(--rx-font); color: var(--rx-text); }
+h1 { font-family: var(--rx-font-head); font-size: 20px; color: var(--rx-accent); text-shadow: var(--rx-glow); }
+h2 { font-size: 15px; margin: 22px 0 10px; border-left: 3px solid var(--rx-accent); padding-left: 8px; }
 section { margin-bottom: 18px; }
-.note { color: #64748b; font-size: 13px; background: #f1f5f9; padding: 12px 14px; border-radius: 8px; }
+.theme-row { margin-bottom: 10px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 14px; }
+.swatch { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background: var(--rx-bg-elev); border: 1px solid var(--rx-border); border-radius: 8px; min-width: 180px; }
+.swatch .desc { color: var(--rx-muted); font-size: 12px; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--rx-border); }
+.note { color: var(--rx-muted); font-size: 13px; background: var(--rx-bg-soft); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--rx-border); }
 </style>

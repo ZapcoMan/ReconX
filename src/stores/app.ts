@@ -1,6 +1,8 @@
 // ReconX 共享状态（Pinia）：popup/result/options 各页持有实例；范围/设置/最近结果经 messaging 与 chrome.* 同步。
 import { defineStore } from 'pinia'
 import * as M from '../shared/messaging'
+import { applyTheme, resolveTheme } from '../shared/theme'
+import type { ThemeId } from '../core/themes'
 import type { Scope, Settings } from '../types'
 
 interface ActiveTab {
@@ -13,7 +15,7 @@ interface ActiveTab {
 export const useAppStore = defineStore('app', {
   state: () => ({
     scope: { hosts: [] } as Scope,
-    settings: { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5 } as Settings,
+    settings: { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' } as Settings,
     active: { tabId: null, host: '', origin: '', url: '' } as ActiveTab,
     inScope: false,
     hasCache: false,
@@ -41,6 +43,7 @@ export const useAppStore = defineStore('app', {
       if (st && st.ok) {
         this.scope = st.scope
         this.settings = st.settings
+        applyTheme(resolveTheme(st.settings && st.settings.theme))
         this.inScope = st.inScope
         this.hasCache = st.hasCache
         this.lastBundle = st.lastBundle
@@ -91,6 +94,10 @@ export const useAppStore = defineStore('app', {
     async saveSettings(patch: Partial<Settings>): Promise<void> {
       await M.setSettings(patch)
       this.settings = Object.assign({}, this.settings, patch)
+    },
+    async setTheme(id: ThemeId): Promise<void> {
+      applyTheme(id)
+      await this.saveSettings({ theme: id })
     },
     openResult(): Promise<void> {
       return M.openResult().then(() => undefined)

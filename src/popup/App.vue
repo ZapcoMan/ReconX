@@ -7,6 +7,10 @@
       <el-button class="gear" text :icon="Setting" title="设置" @click="openOptions" />
     </div>
 
+    <div class="themebrew">
+      <el-segmented v-model="themeId" :options="themeOptions" size="small" @change="onTheme" />
+    </div>
+
     <div class="host">{{ store.active.host || '（无可用页面）' }}</div>
 
     <el-space direction="vertical" fill class="acts" :size="8">
@@ -36,14 +40,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { Setting, ArrowDown } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
 import { exportBundle } from '../core/exporter'
+import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 
 const store = useAppStore()
+const themeId = ref<ThemeId>(store.settings.theme)
+const themeOptions = THEME_ORDER.map((id) => ({ label: THEME_META[id].label, value: id }))
 
-onMounted(() => store.refresh())
+onMounted(async () => {
+  await store.refresh()
+  themeId.value = store.settings.theme
+})
 
 function openOptions(): void {
   chrome.runtime.openOptionsPage()
@@ -60,16 +70,27 @@ async function onProbes(): Promise<void> {
 function onExport(fmt: string): void {
   if (store.lastBundle) exportBundle(store.lastBundle, fmt)
 }
+async function onTheme(val: ThemeId): Promise<void> {
+  await store.setTheme(val)
+}
 </script>
 
 <style scoped>
-.pop { width: 340px; padding: 12px 14px 14px; font: 13px/1.5 system-ui, 'Microsoft YaHei', sans-serif; color: #1f2937; background: #f5f7fa; min-height: 100%; }
+.pop {
+  width: 340px;
+  padding: 12px 14px 14px;
+  font: 13px/1.5 var(--rx-font);
+  color: var(--rx-text);
+  background: var(--rx-bg);
+  min-height: 100%;
+}
 .head { display: flex; align-items: center; gap: 8px; }
-.title { font-weight: 700; font-size: 15px; color: #0d9488; }
+.title { font-family: var(--rx-font-head); font-weight: 700; font-size: 15px; color: var(--rx-accent); text-shadow: var(--rx-glow); }
 .gear { margin-left: auto; }
-.host { margin: 6px 0 10px; color: #64748b; word-break: break-all; font-family: Consolas, monospace; font-size: 12px; }
+.themebrew { margin: 8px 0 2px; }
+.host { margin: 6px 0 10px; color: var(--rx-muted); word-break: break-all; font-family: var(--rx-font); font-size: 12px; }
 .acts { width: 100%; }
 .acts :deep(.el-button) { width: 100%; margin-left: 0; }
 .msg { margin-top: 10px; }
-.foot { margin-top: 12px; color: #94a3b8; font-size: 11px; }
+.foot { margin-top: 12px; color: var(--rx-muted); font-size: 11px; }
 </style>
