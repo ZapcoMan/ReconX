@@ -102,6 +102,58 @@
         <div v-else class="empty">未执行主动探测（需在范围内点击“主动探测”）。</div>
       </el-tab-pane>
 
+      <el-tab-pane label="实时回传" name="live">
+        <div class="tip">本页数据由页面脚本（detector / api-extractor / all-in）实时回传，与采集结果分键存储。最近更新：{{ liveTime }}</div>
+
+        <h3>框架检测</h3>
+        <el-descriptions v-if="live.frameworkDetection" :column="3" border size="small">
+          <el-descriptions-item label="检出">{{ live.frameworkDetection.detected ? '是' : '否' }}</el-descriptions-item>
+          <el-descriptions-item label="框架">{{ live.frameworkDetection.framework || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="路由库">{{ live.frameworkDetection.routerKind || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="Vue 版本">{{ live.frameworkDetection.vueVersion || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="React 版本">{{ live.frameworkDetection.reactVersion || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="路由已检出">{{ live.frameworkDetection.routerDetected ? '是' : '否' }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-else class="empty">暂无框架检测回传。</div>
+
+        <h3>拦截统计</h3>
+        <el-descriptions v-if="liveAllIn" :column="3" border size="small">
+          <el-descriptions-item label="已注入">{{ liveAllIn.injected ? '是' : '否' }}</el-descriptions-item>
+          <el-descriptions-item label="注入时间">{{ new Date(liveAllIn.injectedAt).toLocaleString('zh-CN') }}</el-descriptions-item>
+          <el-descriptions-item label="最后事件">{{ liveAllIn.lastEvent || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="补丁路由数">{{ liveAllIn.routersPatched || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="守卫拦截数">{{ liveAllIn.guardRegistrationBlocked || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="Router 跳转拦截">{{ liveAllIn.routerJumpBlocked || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="浏览器跳转拦截">{{ liveAllIn.browserJumpBlocked || 0 }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-else class="empty">暂无拦截统计回传。</div>
+
+        <h3>路由分析（{{ liveRoutes.length }} 条）</h3>
+        <el-table v-if="liveRoutes.length" :data="liveRoutes" size="small" max-height="320">
+          <el-table-column prop="path" label="路径" />
+          <el-table-column prop="name" label="名称" width="180" />
+          <el-table-column label="meta" width="260"><template #default="{ row }"><code>{{ JSON.stringify(row.meta || {}) }}</code></template></el-table-column>
+        </el-table>
+        <div v-else class="empty">暂无路由分析回传。</div>
+
+        <h3>API 提取</h3>
+        <template v-if="liveApi">
+          <div class="tip">已调用 {{ liveApiStats.liveCount }} · 静态 {{ liveApiStats.staticCount }}（未调用 {{ liveApiStats.uncalledCount }}） · Sourcemap {{ liveApiStats.sourceMapCount }} · JS {{ liveApiStats.scriptCount }} 个 / 内联 {{ liveApiStats.inlineCount }} 段 / 失败 {{ liveApiStats.failedCount }} 个</div>
+          <el-table :data="(liveApi.staticApis || []).slice(0, 400)" size="small" max-height="320">
+            <el-table-column prop="path" label="路径" />
+            <el-table-column label="完整 URL"><template #default="{ row }"><code>{{ row.fullUrl || row.url || row.path }}</code></template></el-table-column>
+            <el-table-column label="已调用" width="90"><template #default="{ row }">{{ row.called ? '是' : '否' }}</template></el-table-column>
+            <el-table-column label="来源" width="180"><template #default="{ row }">{{ (row.sources || []).join(', ') }}</template></el-table-column>
+          </el-table>
+        </template>
+        <div v-else class="empty">暂无 API 提取回传。</div>
+
+        <template v-if="liveErrors.length">
+          <h3>回传错误</h3>
+          <ul><li v-for="[k, v] in liveErrors" :key="k"><code>{{ k }}</code> — {{ v }}</li></ul>
+        </template>
+      </el-tab-pane>
+
       <el-tab-pane label="Dork 与资产测绘" name="dork">
         <div class="bar" style="margin-bottom:8px">
           <el-select v-model="dorkEngine" size="small" style="width:120px">
@@ -141,6 +193,7 @@ import { applyTheme, resolveTheme } from '../shared/theme'
 import { listPackage, toSearchItems } from '../core/dork-library'
 import { PLATFORMS, ASSET_MODES, buildAsset } from '../core/asset-search'
 const bundle = ref<any>(null)
+const live = ref<any>({ updatedAt: 0 })
 const tab = ref('overview')
 
 const techRows = computed(() => {
@@ -149,10 +202,30 @@ const techRows = computed(() => {
   return (bundle.value && bundle.value.tech) || []
 })
 
+const liveTime = computed(() => (live.value.updatedAt ? new Date(live.value.updatedAt).toLocaleString('zh-CN') : '—'))
+const liveRoutes = computed<any[]>(() => (live.value.routerAnalysis && live.value.routerAnalysis.allRoutes) || [])
+const liveAllIn = computed<any | null>(() => (live.value.allInStatus && live.value.allInStatus.injectedAt ? live.value.allInStatus : null))
+const liveApi = computed<any | null>(() => live.value.apiExtractResult || null)
+const liveApiStats = computed(() => {
+  const a = liveApi.value
+  const statics: any[] = (a && a.staticApis) || []
+  return {
+    liveCount: ((a && a.liveApis) || []).length,
+    staticCount: statics.length,
+    uncalledCount: statics.filter((x: any) => !x.called).length,
+    sourceMapCount: ((a && a.sourceMaps) || []).length,
+    scriptCount: (a && a.scriptCount) || 0,
+    inlineCount: (a && a.inlineScriptCount) || 0,
+    failedCount: ((a && a.failedScripts) || []).length
+  }
+})
+const liveErrors = computed<Array<[string, string]>>(() => Object.entries((live.value.errors || {}) as Record<string, string>))
+
 onMounted(async () => {
-  const { lastBundle, settings } = await chrome.storage.local.get(['lastBundle', 'settings'])
+  const { lastBundle, settings, liveState } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState'])
   applyTheme(resolveTheme(settings && settings.theme))
   bundle.value = lastBundle || null
+  live.value = liveState || { updatedAt: 0 }
 })
 
 async function copyRaw(): Promise<void> {
