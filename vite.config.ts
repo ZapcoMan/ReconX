@@ -30,7 +30,7 @@ async function buildAllIn(): Promise<void> {
     logLevel: 'warn',
     plugins: [stripUseStrictPlugin()],
     build: {
-      outDir: PUBLIC,
+      outDir: DIST,
       emptyOutDir: false,
       minify: false,
       target: 'chrome110',
@@ -54,7 +54,7 @@ async function buildDetector(): Promise<void> {
     logLevel: 'warn',
     plugins: [stripUseStrictPlugin()],
     build: {
-      outDir: PUBLIC,
+      outDir: DIST,
       emptyOutDir: false,
       minify: false,
       target: 'chrome110',
@@ -78,7 +78,7 @@ async function buildApiExtractor(): Promise<void> {
     logLevel: 'warn',
     plugins: [stripUseStrictPlugin()],
     build: {
-      outDir: PUBLIC,
+      outDir: DIST,
       emptyOutDir: false,
       minify: false,
       target: 'chrome110',
