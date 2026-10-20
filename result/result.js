@@ -154,7 +154,25 @@
   ];
   const nav = $("tabs");
   const panels = $("panels");
-  panels.append(el("section", "raw", el("h2", null, "原始 JSON"), el("pre", null, JSON.stringify(bundle, null, 2))));
+  const rawJson = JSON.stringify(bundle, null, 2);
+  const rawTitle = el("h2", null, "原始 JSON");
+  const copyRawBtn = el("button", "tiny", "复制 JSON");
+  copyRawBtn.style.marginLeft = "10px";
+  function fallbackCopy(t) { var ta = document.createElement("textarea"); ta.value = t; ta.style.position = "fixed"; ta.style.left = "-9999px"; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); }
+  copyRawBtn.addEventListener("click", function () {
+    var done = function (msg) { copyRawBtn.textContent = msg; setTimeout(function () { copyRawBtn.textContent = "复制 JSON"; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(rawJson).then(function () { done("已复制"); }).catch(function () { fallbackCopy(rawJson); done("已复制"); }); }
+    else { fallbackCopy(rawJson); done("已复制"); }
+  });
+  rawTitle.append(copyRawBtn);
+  const rawPre = el("pre", null, rawJson);
+  rawPre.style.userSelect = "text";
+  rawPre.style.webkitUserSelect = "text";
+  rawPre.title = "单击可全选内容，方便复制";
+  rawPre.addEventListener("click", function () {
+    try { var s = window.getSelection(); var r = document.createRange(); r.selectNodeContents(rawPre); s.removeAllRanges(); s.addRange(r); } catch (e) {}
+  });
+  panels.append(el("section", "raw", rawTitle, rawPre));
   const rawSection = panels.lastChild;
   rawSection.style.display = "none";
   TABS.forEach((t, i) => {
