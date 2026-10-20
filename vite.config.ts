@@ -1,9 +1,60 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { crx, defineManifest } from '@crxjs/vite-plugin'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import { fileURLToPath, URL } from 'node:url'
+import path from 'node:path'
+
+const ROOT = fileURLToPath(new URL('.', import.meta.url))
+const DIST = path.join(ROOT, 'dist')
+const PUBLIC = path.join(ROOT, 'public')
+
+function stripUseStrictPlugin(): Plugin {
+  return {
+    name: 'reconx:strip-use-strict',
+    enforce: 'post',
+    renderChunk(code: string) {
+      const stripped = code.replace(/\n\s*["']use strict["'];\n/, '\n')
+      return stripped === code ? null : { code: stripped, map: null }
+    }
+  }
+}
+
+async function buildAllIn(): Promise<void> {
+  const { build } = await import('vite')
+  await build({
+    configFile: false,
+    publicDir: false,
+    logLevel: 'warn',
+    plugins: [stripUseStrictPlugin()],
+    build: {
+      outDir: PUBLIC,
+      emptyOutDir: false,
+      minify: false,
+      target: 'chrome110',
+      rollupOptions: {
+        treeshake: false,
+        input: path.join(ROOT, 'src', 'core', 'all-in.ts'),
+        output: {
+          format: 'iife',
+          entryFileNames: 'all-in.js'
+        }
+      }
+    }
+  })
+}
+
+function allInScriptPlugin(): Plugin {
+  return {
+    name: 'reconx:all-in-script',
+    apply: 'build',
+    async buildStart() {
+      await buildAllIn()
+    }
+  }
+}
 
 const manifest = defineManifest({
   manifest_version: 3,
@@ -25,7 +76,7 @@ const manifest = defineManifest({
   host_permissions: [],
   web_accessible_resources: [
     {
-      resources: ['src/result/result.html'],
+      resources: ['src/result/result.html', 'all-in.js'],
       matches: ['<all_urls>']
     }
   ],
@@ -37,7 +88,8 @@ export default defineConfig({
     vue(),
     AutoImport({ resolvers: [ElementPlusResolver()] }),
     Components({ resolvers: [ElementPlusResolver()] }),
-    crx({ manifest })
+    crx({ manifest }),
+    allInScriptPlugin()
   ],
   build: {
     sourcemap: true,

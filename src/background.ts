@@ -289,6 +289,26 @@ function buildRisks(headerReport: any, js: any): any[] {
 }
 
 // ---------------- 主动探测（需用户点击 + 范围内） ----------------
+async function injectAllIn(tabId: number): Promise<{ ok: boolean; injected: boolean; framework: string | null; error?: string }> {
+  try {
+    const ri = await detectRouterAndLive(tabId)
+    const tech = TechStack.detect({ routerInfo: ri })
+    const isVue = tech.framework.vue || tech.framework.react
+    if (!isVue) {
+      return { ok: true, injected: false, framework: null }
+    }
+    const fw = tech.framework.vue ? 'vue' : 'react'
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      files: ['all-in.js']
+    })
+    return { ok: true, injected: true, framework: fw }
+  } catch (e: any) {
+    return { ok: false, injected: false, framework: null, error: String(e) }
+  }
+}
+
 async function runProbes(origin: string, host: string, tabId?: number): Promise<any> {
   if (!(await inScope(host))) return { ok: false, error: 'out_of_scope' }
   const results: any[] = []
@@ -315,6 +335,7 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
     await new Promise((res) => setTimeout(res, 250))
   }
   let routes: any = { applicable: false, reason: '未提供标签页，跳过路由探测' }
+  let allInResult: any = { injected: false }
   try {
     if (tabId) {
       const tab = await chrome.tabs.get(tabId)
@@ -322,11 +343,14 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
       const tech = TechStack.detect({ routerInfo: ri })
       if (tech.decision.enableRouteProbe) routes = await probeRoutes({ routerInfo: ri, currentUrl: tab.url || '' })
       else routes = { applicable: false, reason: tech.decision.reason }
+      if (tech.framework.vue || tech.framework.react) {
+        allInResult = await injectAllIn(tabId)
+      }
     }
   } catch (e: any) {
     routes = { applicable: false, reason: String((e && e.message) || e) }
   }
-  return { ok: true, results, routes }
+  return { ok: true, results, routes, allIn: allInResult }
 }
 
 // ---------------- 主收集流程 ----------------

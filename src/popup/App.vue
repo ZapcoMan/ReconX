@@ -8,7 +8,28 @@
     </div>
 
     <div class="themebrew">
-      <el-segmented v-model="themeId" :options="themeOptions" size="small" @change="onTheme" />
+      <el-select v-model="themeId" size="small" @change="onTheme" style="width: 100%">
+        <el-option
+          v-for="id in THEME_ORDER"
+          :key="id"
+          :label="THEME_META[id].label"
+          :value="id"
+        >
+          <span style="display: flex; align-items: center; gap: 8px">
+            <span
+              :style="{
+                display: 'inline-block',
+                width: '14px',
+                height: '14px',
+                borderRadius: '3px',
+                background: `linear-gradient(135deg, ${THEME_META[id].swatch[0]} 34%, ${THEME_META[id].swatch[1]} 34% 66%, ${THEME_META[id].swatch[2]} 66%)`
+              }"
+            />
+            {{ THEME_META[id].label }}
+            <span style="color: var(--rx-muted); font-size: 11px">{{ THEME_META[id].desc }}</span>
+          </span>
+        </el-option>
+      </el-select>
     </div>
 
     <div class="host">{{ store.active.host || '（无可用页面）' }}</div>
@@ -48,7 +69,6 @@ import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 
 const store = useAppStore()
 const themeId = ref<ThemeId>(store.settings.theme)
-const themeOptions = THEME_ORDER.map((id) => ({ label: THEME_META[id].label, value: id }))
 
 onMounted(async () => {
   await store.refresh()
@@ -87,7 +107,7 @@ async function onTheme(val: ThemeId): Promise<void> {
 .head { display: flex; align-items: center; gap: 8px; }
 .title { font-family: var(--rx-font-head); font-weight: 700; font-size: 15px; color: var(--rx-accent); text-shadow: var(--rx-glow); }
 .gear { margin-left: auto; }
-.themebrew { margin: 8px 0 2px; }
+.themebrew { margin: 10px 0 4px; }
 .host { margin: 6px 0 10px; color: var(--rx-muted); word-break: break-all; font-family: var(--rx-font); font-size: 12px; }
 .acts { width: 100%; }
 .acts :deep(.el-button) { width: 100%; margin-left: 0; }
