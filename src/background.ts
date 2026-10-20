@@ -9,6 +9,7 @@ import { computeExtras } from './core/collect-extras'
 import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
 import type { Scope, Settings } from './types'
+import type { LiveSnapshot } from './shared/messaging'
 
 const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' }
 
