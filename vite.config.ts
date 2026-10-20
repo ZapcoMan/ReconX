@@ -46,12 +46,46 @@ async function buildAllIn(): Promise<void> {
   })
 }
 
+async function buildContentScript(): Promise<void> {
+  const { build } = await import('vite')
+  await build({
+    configFile: false,
+    publicDir: false,
+    logLevel: 'warn',
+    plugins: [stripUseStrictPlugin()],
+    build: {
+      outDir: PUBLIC,
+      emptyOutDir: false,
+      minify: false,
+      target: 'chrome110',
+      rollupOptions: {
+        treeshake: false,
+        input: path.join(ROOT, 'src', 'extension', 'content.ts'),
+        output: {
+          format: 'iife',
+          entryFileNames: 'content.js'
+        }
+      }
+    }
+  })
+}
+
 function allInScriptPlugin(): Plugin {
   return {
     name: 'reconx:all-in-script',
     apply: 'build',
     async buildStart() {
       await buildAllIn()
+    }
+  }
+}
+
+function contentScriptPlugin(): Plugin {
+  return {
+    name: 'reconx:content-script',
+    apply: 'build',
+    async buildStart() {
+      await buildContentScript()
     }
   }
 }
@@ -76,8 +110,15 @@ const manifest = defineManifest({
   host_permissions: [],
   web_accessible_resources: [
     {
-      resources: ['src/result/result.html', 'all-in.js'],
+      resources: ['src/result/result.html', 'all-in.js', 'content.js'],
       matches: ['<all_urls>']
+    }
+  ],
+  content_scripts: [
+    {
+      matches: ['<all_urls>'],
+      js: ['content.js'],
+      run_at: 'document_idle'
     }
   ],
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" }
@@ -89,7 +130,8 @@ export default defineConfig({
     AutoImport({ resolvers: [ElementPlusResolver()] }),
     Components({ resolvers: [ElementPlusResolver()] }),
     crx({ manifest }),
-    allInScriptPlugin()
+    allInScriptPlugin(),
+    contentScriptPlugin()
   ],
   build: {
     sourcemap: true,
