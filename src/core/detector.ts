@@ -175,7 +175,7 @@ declare global {
      * 上报框架检测结果。
      * @param result - 形如 { detected: boolean, method: string, framework?: 'vue' | 'react' }
      */
-    function sendResult(result: Pick<ReconX_VueDetectionResult, 'detected' | 'method' | 'framework'>): void {
+    function sendResult(result: { detected: boolean; method: string; framework?: FrameworkKind }): void {
         window.postMessage({
             type: 'RECONX_FRAMEWORK_DETECTION_RESULT',
             result: result
@@ -843,7 +843,7 @@ declare global {
      * @returns 分析结果
      */
     function performFullAnalysis(): RouterAnalysisResult {
-        const result: ReconX_FullRouterAnalysis = {
+        const result: RouterAnalysisResult = {
             vueDetected: false,
             framework: 'vue',
             vueVersion: null,
