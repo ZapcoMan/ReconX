@@ -61,4 +61,5 @@ button.tiny { padding: 3px 7px; font-size: 12px; }
 .lvl.info { background: #243042; color: var(--muted); }
 footer { padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 footer a { color: var(--accent); float: right; text-decoration: none; }
+#openOptions svg { vertical-align: -2px; margin-right: 3px; fill: currentColor; }
 .hidden { display: none !important; }
