@@ -194,8 +194,12 @@
         setStatus("还没有采集结果，请先收集。", "warn");
         return;
       }
-      const r = await chrome.runtime.sendMessage({ type: "EXPORT", format: btn.getAttribute("data-fmt"), bundle });
-      setStatus(r && r.ok ? "已生成下载：" + r.filename : "导出失败", r && r.ok ? "ok" : "warn");
+      try {
+        window.Exporter.export(bundle, btn.getAttribute("data-fmt"));
+        setStatus("已触发下载（" + btn.textContent + "）。", "ok");
+      } catch (e) {
+        setStatus("导出失败：" + String((e && e.message) || e), "warn");
+      }
     });
   });
 

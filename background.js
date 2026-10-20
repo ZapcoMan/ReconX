@@ -359,73 +359,6 @@ async function runProbes(origin, host) {
   return { ok: true, results };
 }
 
-// ---------------- 导出 ----------------
-async function doExport(format, bundle) {
-  const host = bundle && bundle.meta && bundle.meta.host;
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const base = "recon_" + (host || "target") + "_" + ts;
-  let filename, mime, content;
-  if (format === "csv") {
-    const rows = [["type", "value", "note"]];
-    (bundle.links ? bundle.links.endpoints : []).forEach((e) => rows.push(["endpoint", e.url, e.same ? "same" : "cross"]));
-    (bundle.js ? bundle.js.findings : []).forEach((f) => rows.push(["js-finding", f.name, f.severity + " " + (f.samples[0] ? f.samples[0].masked : "")]));
-    (bundle.headers && bundle.headers.missing ? bundle.headers.missing : []).forEach((m) => rows.push(["header-missing", m.header, m.advice]));
-    content = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
-    filename = base + ".csv";
-    mime = "text/csv";
-  } else if (format === "md") {
-    content = toMarkdown(bundle);
-    filename = base + ".md";
-    mime = "text/markdown";
-  } else {
-    content = JSON.stringify(bundle, null, 2);
-    filename = base + ".json";
-    mime = "application/json";
-  }
-  const blob = new Blob([content], { type: mime + ";charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const id = await chrome.downloads.download({ url, filename, saveAs: true });
-  return { ok: true, id, filename };
-}
-
-function toMarkdown(b) {
-  const L = [];
-  L.push("# Recon 报告 - " + (b.meta ? b.meta.host : ""));
-  L.push("");
-  L.push("- 采集时间: " + (b.meta ? new Date(b.meta.collectedAt).toISOString() : ""));
-  L.push("- URL: " + (b.meta ? b.meta.url : ""));
-  L.push("- 在允许域范围内: " + (b.meta ? b.meta.inScope : ""));
-  L.push("");
-  L.push("## 风险摘要");
-  if (b.risks && b.risks.length) b.risks.forEach((r) => L.push("- [" + r.level + "] " + r.category + ": " + r.summary));
-  else L.push("- （无显著风险线索）");
-  L.push("");
-  L.push("## 技术栈");
-  (b.tech || []).forEach((t) => L.push("- " + t.name + (t.version ? " " + t.version : "") + " (" + t.category + ")"));
-  L.push("");
-  L.push("## WAF / 边缘防护线索");
-  (b.waf || []).forEach((w) => L.push("- " + w.name + " — " + w.evidence.join(", ")));
-  L.push("");
-  L.push("## 响应头");
-  L.push("- Server: " + ((b.headers && b.headers.server) || "-") + "  X-Powered-By: " + ((b.headers && b.headers.poweredBy) || "-"));
-  (b.headers && b.headers.missing || []).forEach((m) => L.push("- 缺失: " + m.header + " (" + m.level + ")"));
-  L.push("");
-  L.push("## JS 敏感信息线索（已掩码）");
-  (b.js && b.js.findings || []).forEach((f) => L.push("- [" + f.severity + "] " + f.name + " ×" + f.count + " — " + f.url));
-  (b.js && b.js.inlineFindings || []).forEach((f) => L.push("- [" + f.severity + "] (inline) " + f.name + " ×" + f.count));
-  L.push("");
-  L.push("## 链接与端点");
-  L.push("- 总数: " + ((b.links && b.links.total) || 0) + "  同源: " + ((b.links && b.links.sameOriginCount) || 0));
-  ((b.links && b.links.byHost) || []).forEach((h) => L.push("  - " + h.host + ": " + h.count));
-  L.push("");
-  L.push("## 主动探测");
-  if (b.probes && b.probes.results) b.probes.results.filter((p) => p.matched).forEach((p) => L.push("- [" + p.severity + "] " + p.path + " -> " + p.status + " " + p.desc));
-  else L.push("- 未执行");
-  L.push("");
-  L.push("> 合规：本报告仅用于已授权目标（渗透测试/漏洞赏金/OSINT/自查）。命中为线索，需人工确认。");
-  return L.join("\n");
-}
-
 // ---------------- 主收集流程 ----------------
 async function collect(tabId) {
   let tab;
@@ -559,10 +492,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         sendResponse(res);
       })();
-      return true;
-    }
-    case "EXPORT": {
-      doExport(msg.format, msg.bundle).then((r) => sendResponse(r)).catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
       return true;
     }
     case "OPEN_RESULT": {

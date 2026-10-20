@@ -182,6 +182,11 @@
   nav.append(rawBtn);
 
   document.querySelectorAll(".tools [data-fmt]").forEach((b) =>
-    b.addEventListener("click", () => chrome.runtime.sendMessage({ type: "EXPORT", format: b.getAttribute("data-fmt"), bundle }))
+    b.addEventListener("click", () => {
+      try {
+        const minSeverity = (document.getElementById("minSev") || {}).value || "info";
+        window.Exporter.export(bundle, b.getAttribute("data-fmt"), { minSeverity });
+      } catch (e) { console.error(e); }
+    })
   );
 })();

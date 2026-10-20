@@ -3,21 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="result.css" />
-    <title>Recon Lens · 采集结果</title>
+    <title>ReconX · 采集结果</title>
   </head>
   <body>
     <header>
       <div class="ttl"><span class="dot"></span> 采集结果</div>
       <div id="meta" class="meta"></div>
       <div class="tools">
+        <label class="flt">最低等级
+          <select id="minSev">
+            <option value="info">全部</option>
+            <option value="low">≥低危</option>
+            <option value="medium" selected>≥中危</option>
+            <option value="high">≥高危</option>
+            <option value="critical">仅严重</option>
+          </select>
+        </label>
         导出：
         <button data-fmt="json">JSON</button>
         <button data-fmt="csv">CSV</button>
         <button data-fmt="md">Markdown</button>
+        <button data-fmt="html">HTML</button>
+        <button data-fmt="src">SRC报告</button>
+        <button data-fmt="txt">端点TXT</button>
       </div>
     </header>
     <nav id="tabs"></nav>
     <main id="panels"></main>
+    <script src="../lib/exporter.js"></script>
     <script src="result.js"></script>
   </body>
 </html>

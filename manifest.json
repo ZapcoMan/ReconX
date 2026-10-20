@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Recon Lens - 授权范围信息收集",
+  "name": "ReconX - 授权范围信息收集",
   "version": "0.1.0",
   "description": "面向已授权目标（渗透测试/漏洞赏金/OSINT/自查）的浏览器侦察助手：技术栈与WAF指纹、响应头与Cookie分析、JS敏感信息扫描、链接与参数收集。内置允许域范围管控。",
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Recon Lens",
+    "default_title": "ReconX",
     "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
   },
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
@@ -17,7 +17,6 @@
     "tabs",
     "scripting",
     "storage",
-    "downloads",
     "webRequest"
   ],
   "optional_permissions": [],

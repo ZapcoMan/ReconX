@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="popup.css" />
-    <title>Recon Lens</title>
+    <title>ReconX</title>
   </head>
   <body>
     <header>
-      <div class="brand"><span class="dot"></span> Recon Lens</div>
+      <div class="brand"><span class="dot"></span> ReconX</div>
       <div class="host" id="host">—</div>
     </header>
 
@@ -23,6 +23,9 @@
         <button data-fmt="json" class="tiny">JSON</button>
         <button data-fmt="csv" class="tiny">CSV</button>
         <button data-fmt="md" class="tiny">MD</button>
+        <button data-fmt="html" class="tiny">HTML</button>
+        <button data-fmt="src" class="tiny">SRC</button>
+        <button data-fmt="txt" class="tiny">TXT</button>
       </div>
     </div>
 
@@ -35,6 +38,7 @@
       <a href="#" id="openOptions">设置与合规 ›</a>
     </footer>
 
+    <script src="../lib/exporter.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
