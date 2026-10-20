@@ -870,23 +870,19 @@ declare global {
         try {
             // 拦截控制台输出
             console.log = function (...args: any[]) {
-                result.logs.push({ type: 'log', message: args.join(' ') });
+                (result.logs ??= []).push({ type: 'log', message: args.join(' ') });
                 originals.log.apply(console, args);
             };
             console.warn = function (...args: any[]) {
-                result.logs.push({ type: 'warn', message: args.join(' ') });
+                (result.logs ??= []).push({ type: 'warn', message: args.join(' ') });
                 originals.warn.apply(console, args);
             };
             console.error = function (...args: any[]) {
-                result.logs.push({ type: 'error', message: args.join(' ') });
+                (result.logs ??= []).push({ type: 'error', message: args.join(' ') });
                 originals.error.apply(console, args);
             };
             console.table = function (data?: any, columns?: string[]) {
-                if (Array.isArray(data)) {
-                    result.logs.push({ type: 'table', data: [...data] });
-                } else {
-                    result.logs.push({ type: 'table', data: { ...data } });
-                }
+                (result.logs ??= []).push(Array.isArray(data) ? { type: 'table', data: [...data] } : { type: 'table', data: { ...data } });
                 originals.table.call(console, data, columns);
             };
 
