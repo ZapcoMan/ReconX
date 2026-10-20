@@ -1,6 +1,6 @@
-/* global self, Fingerprints, SensitiveRules, HeaderChecks */
+/* global self, Fingerprints, SensitiveRules, HeaderChecks, UrlClassify, RouteUrls, ApiExtract, SecurityAudit */
 // background service worker：收集中枢。classic worker，使用 importScripts 加载规则库。
-importScripts("lib/fingerprints.js", "lib/sensitive-rules.js", "lib/header-checks.js");
+importScripts("lib/fingerprints.js", "lib/sensitive-rules.js", "lib/header-checks.js", "lib/url-classify.js", "lib/route-urls.js", "lib/api-extract.js", "lib/security-audit.js", "lib/router-probe.js", "lib/collect-extras.js", "lib/tech-stack.js", "lib/probe-routes.js");
 
 const DEFAULT_SETTINGS = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5 };
 
@@ -122,6 +122,16 @@ async function collectWindowVars(tabId) {
   }
 }
 
+// ---------------- MAIN world 只读路由/框架探测（引用 lib/router-probe.js 的 ROUTER_PROBE） ----------------
+async function detectRouterAndLive(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: self.ROUTER_PROBE });
+    return (res && res.result) || {};
+  } catch (e) {
+    return { error: String((e && e.message) || e) };
+  }
+}
+
 // ---------------- 抓取 JS 并扫描 ----------------
 async function fetchText(url) {
   const ctrl = new AbortController();
@@ -152,6 +162,14 @@ async function limit(items, n, fn) {
   return out;
 }
 async function scanJs(scriptUrls, inlineText, currentHost, scopeHosts, settings) {
+  const endpoints = Object.create(null);
+  const shortSource = (u) => {
+    try {
+      return new URL(u).pathname.split("/").pop();
+    } catch (e) {
+      return u;
+    }
+  };
   const uniq = [];
   const seen = new Set();
   for (const u of scriptUrls) {
@@ -170,12 +188,14 @@ async function scanJs(scriptUrls, inlineText, currentHost, scopeHosts, settings)
   const results = await limit(targets, settings.maxConcurrent, async (u) => {
     const r = await fetchText(u);
     const findings = r.ok && r.text ? SensitiveRules.scanText(r.text, u) : [];
+    if (r.ok && r.text) ApiExtract.extractFromText(r.text, endpoints, shortSource(u));
     const maps = r.ok && r.text ? (r.text.match(/[#@]sourceMappingURL=([^\s'"]+)/g) || []).map((s) => s.replace(/[#@]sourceMappingURL=/, "")) : [];
     return { url: u, status: r.status, ok: r.ok, skipped: !!r.skipped, error: r.error, size: r.size, findings, maps };
   });
-  // 内联脚本扫描
+  // 内联脚本扫描 + 端点提取
   const inlineFindings = inlineText ? SensitiveRules.scanText(inlineText, "inline") : [];
-  return { scanned: results.map((r) => ({ url: r.url, status: r.status, ok: r.ok, skipped: r.skipped, size: r.size, error: r.error })), findings: results.flatMap((r) => r.findings), inlineFindings, sourcemaps: results.flatMap((r) => r.maps.map((m) => ({ from: r.url, map: m }))) };
+  if (inlineText) ApiExtract.extractFromText(inlineText, endpoints, "inline");
+  return { scanned: results.map((r) => ({ url: r.url, status: r.status, ok: r.ok, skipped: r.skipped, size: r.size, error: r.error })), findings: results.flatMap((r) => r.findings), inlineFindings, sourcemaps: results.flatMap((r) => r.maps.map((m) => ({ from: r.url, map: m }))), endpoints };
 }
 
 // ---------------- 链接 / 端点 归一 ----------------
@@ -324,7 +344,7 @@ function buildRisks(headerReport, js) {
 }
 
 // ---------------- 主动探测（需用户点击 + 范围内） ----------------
-async function runProbes(origin, host) {
+async function runProbes(origin, host, tabId) {
   if (!(await inScope(host))) return { ok: false, error: "out_of_scope" };
   const results = [];
   const probes = SensitiveRules.PATH_PROBES;
@@ -356,7 +376,20 @@ async function runProbes(origin, host) {
     }
     await new Promise((res) => setTimeout(res, 250)); // 限流，避免压垮目标
   }
-  return { ok: true, results };
+  // 统一“主动探测”：依合并技术栈的框架决策，对 Vue/React 站点追加前端路由可达性探测（并入原“梭哈”意图）
+  let routes = { applicable: false, reason: "未提供标签页，跳过路由探测" };
+  try {
+    if (tabId) {
+      const tab = await chrome.tabs.get(tabId);
+      const ri = await detectRouterAndLive(tabId);
+      const tech = self.TechStack.detect({ routerInfo: ri });
+      if (tech.decision.enableRouteProbe) routes = await self.ProbeRoutes({ routerInfo: ri, currentUrl: tab.url });
+      else routes = { applicable: false, reason: tech.decision.reason };
+    }
+  } catch (e) {
+    routes = { applicable: false, reason: String((e && e.message) || e) };
+  }
+  return { ok: true, results, routes };
 }
 
 // ---------------- 主收集流程 ----------------
@@ -427,6 +460,21 @@ async function collect(tabId) {
     risks: buildRisks(headerReport, js),
   };
 
+  // 只读三能力：路由枚举 / API 端点提取 / 前端安全审计（组装见 lib/collect-extras.js）
+  try {
+    const routerInfo = await detectRouterAndLive(tabId);
+    const extras = self.ComputeExtras({ tab, payload, host, scope, settings, js, routerInfo, links });
+    bundle.routes = extras.routes;
+    bundle.api = extras.api;
+    bundle.security = extras.security;
+    if (bundle.links) bundle.links.classified = extras.classified;
+    if (extras.riskNote) bundle.risks.unshift(extras.riskNote);
+    const tech = self.TechStack.detect({ headerReport, metaGenerator: payload.metaGenerator, resourceUrls: (resources.scripts || []).concat(resources.css || [], resources.data || []), htmlEvidence: payload.htmlEvidence, windowVars, routerInfo });
+    bundle.techStack = tech;
+  } catch (e) {
+    bundle.routes = { error: String((e && e.message) || e) };
+  }
+
   await chrome.storage.local.set({ lastBundle: bundle });
   return { ok: true, bundle };
 }
@@ -482,11 +530,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     case "RUN_PROBES": {
       (async () => {
-        const res = await runProbes(msg.origin, msg.host);
+        const res = await runProbes(msg.origin, msg.host, msg.tabId);
         if (res.ok) {
           const { lastBundle } = await chrome.storage.local.get("lastBundle");
           if (lastBundle) {
-            lastBundle.probes = { performed: true, results: res.results };
+            lastBundle.probes = { performed: true, results: res.results, routes: res.routes };
             await chrome.storage.local.set({ lastBundle });
           }
         }

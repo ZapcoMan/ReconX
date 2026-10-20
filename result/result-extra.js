@@ -152,6 +152,8 @@
     nav.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
     tabBtn.classList.add("active");
     panels.querySelectorAll(".panel").forEach((p) => (p.style.display = "none"));
+    const raw = panels.querySelector(".raw");
+    if (raw) raw.style.display = "none";
     panel.style.display = "block";
   }
   tabBtn.addEventListener("click", showPanel);

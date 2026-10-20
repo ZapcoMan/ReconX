@@ -172,7 +172,7 @@
       return;
     }
     setStatus("主动探测敏感路径（串行限流）…");
-    const r = await chrome.runtime.sendMessage({ type: "RUN_PROBES", origin: originBase, host });
+    const r = await chrome.runtime.sendMessage({ type: "RUN_PROBES", origin: originBase, host, tabId: tab ? tab.id : undefined });
     if (r && r.ok) {
       const hits = (r.results || []).filter((x) => x.matched);
       setStatus("探测完成：命中 " + hits.length + " 个路径（详见窗口）。", hits.length ? "warn" : "ok");
