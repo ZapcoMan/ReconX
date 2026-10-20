@@ -37,3 +37,18 @@ pre { background: #0a1018; border: 1px solid var(--line); border-radius: 8px; pa
 .lvl.medium { background: #4a3600; color: #ffe082; }
 .lvl.low { background: #0b3a4a; color: #80deea; }
 .lvl.info { background: #243042; color: var(--muted); }
+section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 16px 18px; }
+.row2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.row2 label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.row2 label.inline { font-size: 12px; color: var(--muted); }
+.row2 input[type="text"] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #0e1620; color: var(--ink); min-width: 220px; }
+.row2 select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #0e1620; color: var(--ink); }
+.row2 input[type="checkbox"] { width: auto; }
+button { font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); color: #04231d; border: none; border-radius: 6px; padding: 6px 12px; font-weight: 700; }
+button.tiny { padding: 2px 7px; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; background: #111c27; color: var(--muted); }
+.mono, .qlist code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--blue); word-break: break-all; }
+.qlist { list-style: none; padding: 0; margin: 6px 0; }
+.qlist li { padding: 5px 0; border-bottom: 1px dashed var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.qlist a { color: var(--accent); text-decoration: none; }
+.qlist a:hover { text-decoration: underline; }
