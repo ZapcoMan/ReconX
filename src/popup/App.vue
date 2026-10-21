@@ -10,9 +10,9 @@
     <div class="host">{{ store.active.host || '（无可用页面）' }}</div>
 
     <el-space direction="vertical" fill class="acts" :size="8">
-      <el-button v-if="!store.inScope" type="primary" :loading="store.busy" @click="onAuthorize">授权并加入范围</el-button>
-      <el-button :disabled="!store.inScope" :loading="store.busy" @click="onCollect">开始采集</el-button>
-      <el-button :disabled="!store.inScope || !store.lastBundle || !store.settings.activeProbe" :loading="store.busy" @click="onProbes">主动探测</el-button>
+      <el-button v-if="!store.inScope" type="primary" :loading="store.busyAction === 'authorize'" @click="onAuthorize">授权并加入范围</el-button>
+      <el-button :disabled="!store.inScope" :loading="store.busyAction === 'collect'" @click="onCollect">开始采集</el-button>
+      <el-button :disabled="!store.inScope || !store.lastBundle || !store.settings.activeProbe" :loading="store.busyAction === 'probes'" @click="onProbes">主动探测</el-button>
       <el-button :disabled="!store.lastBundle" @click="store.openResult()">查看结果</el-button>
     </el-space>
 

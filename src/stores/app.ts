@@ -22,7 +22,7 @@ export const useAppStore = defineStore('app', {
     hasCache: false,
     lastBundle: null as any | null,
     live: { updatedAt: 0 } as LiveSnapshot,
-    busy: false,
+    busyAction: '' as '' | 'authorize' | 'collect' | 'probes',
     message: '' as string
   }),
   getters: {
@@ -58,13 +58,18 @@ export const useAppStore = defineStore('app', {
     },
     async authorize(): Promise<boolean> {
       if (!this.active.origin) { this.message = '当前页 URL 不支持授权'; return false }
-      let granted = false
-      try { granted = await chrome.permissions.request({ origins: [this.active.origin + '/*'] }) } catch { granted = false }
-      if (!granted) { this.message = '未获得 host 权限，无法采集'; return false }
-      await M.addHost(this.active.host, this.active.origin, '')
-      await this.refresh()
-      this.message = '已加入允许域并授权'
-      return true
+      this.busyAction = 'authorize'
+      try {
+        let granted = false
+        try { granted = await chrome.permissions.request({ origins: [this.active.origin + '/*'] }) } catch { granted = false }
+        if (!granted) { this.message = '未获得 host 权限，无法采集'; return false }
+        await M.addHost(this.active.host, this.active.origin, '')
+        await this.refresh()
+        this.message = '已加入允许域并授权'
+        return true
+      } finally {
+        this.busyAction = ''
+      }
     },
     async revokeHost(host: string, origin: string): Promise<void> {
       await M.removeHost(host, origin)
@@ -72,26 +77,26 @@ export const useAppStore = defineStore('app', {
     },
     async collect(): Promise<void> {
       if (this.active.tabId == null) return
-      this.busy = true
+      this.busyAction = 'collect'
       this.message = '采集中…'
       try {
         const r = await M.collect(this.active.tabId)
         if (r.ok && r.bundle) { this.lastBundle = r.bundle; this.message = '采集完成' }
         else this.message = r.hint || r.error || '采集失败'
       } finally {
-        this.busy = false
+        this.busyAction = ''
       }
     },
     async probes(): Promise<void> {
       if (this.active.tabId == null || !this.inScope) return
-      this.busy = true
+      this.busyAction = 'probes'
       this.message = '主动探测中…'
       try {
         const r = await M.runProbes(this.active.origin, this.active.host, this.active.tabId)
         if (r.ok) { this.message = '探测完成'; await this.loadState() }
-        else this.message = r.error || '探测失败'
+        else this.message = r.error === 'probe_disabled' ? '主动探测已在设置页关闭' : (r.error || '探测失败')
       } finally {
-        this.busy = false
+        this.busyAction = ''
       }
     },
     async saveSettings(patch: Partial<Settings>): Promise<void> {
