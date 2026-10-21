@@ -1,0 +1,41 @@
+name: 部署官网 (GitHub Pages)
+
+# 仅当 site/ 内容变化时触发；也可在 Actions 页手动 Run workflow。
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一个部署，后来者排队（不取消进行中的发布）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 读取 Pages 设置并输出站点地址；仓库尚未启用 Pages 时会失败
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      # 把 site/ 整个目录作为站点产物（不经 Jekyll 处理）
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

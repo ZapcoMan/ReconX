@@ -1,0 +1,42 @@
+name: 构建扩展安装包 (zip)
+
+# 打 vX.Y.Z 标签时自动构建 dist/ 并打包成 zip，供下载后手动上传 GitHub Release。
+# 也可在 Actions 页手动触发（用于测试构建）。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # npm run build 内含 vue-tsc 类型检查，类型不过则不产出安装包
+      - run: npm ci
+      - run: npm run build
+
+      - name: 打包 dist 为 zip
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          cd dist
+          zip -r "../ReconX-${VERSION}.zip" .
+          cd ..
+          ls -l "ReconX-${VERSION}.zip"
+
+      # 产物落在 Actions 的 Artifacts 区，下载后自行上传到 Release 资源
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReconX-${{ github.ref_name }}
+          path: ReconX-*.zip
+          if-no-files-found: error
