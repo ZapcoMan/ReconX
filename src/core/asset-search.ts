@@ -59,18 +59,53 @@ export interface ExtraSource {
   id: string
   name: string
   hint: string
+  /** 该入口是否依赖目标域名（工信部备案是固定入口页） */
+  needsDomain: boolean
   build: (d: string) => string
 }
 export const EXTRA_SOURCES: ExtraSource[] = [
-  { id: 'crtname', name: 'crt.name', hint: '证书透明日志枚举子域名（国内直连）', build: (d) => `https://crt.name/v1/search?apex=${encodeURIComponent(d)}` },
-  { id: 'wayback', name: 'Wayback', hint: '历史快照，找回已下线老系统', build: (d) => `https://web.archive.org/web/*/${encodeURIComponent(d)}/*` },
-  { id: 'virustotal', name: 'VirusTotal', hint: '子域与解析记录', build: (d) => `https://www.virustotal.com/gui/domain/${encodeURIComponent(d)}/relations` },
-  { id: 'shodan', name: 'Shodan', hint: '海外资产与开放服务', build: (d) => `https://www.shodan.io/search?query=${encodeURIComponent(d)}` },
-  { id: 'aiqicha', name: '爱企查', hint: '查主办单位与关联域名', build: (d) => `https://aiqicha.baidu.com/s?q=${encodeURIComponent(d)}` },
-  { id: 'beian', name: 'ICP 备案', hint: '工信部备案查询', build: () => 'https://beian.miit.gov.cn/#/Integrated/recordQuery' }
+  { id: 'crtname', name: 'crt.name', hint: '证书透明日志枚举子域名（国内直连）', needsDomain: true, build: (d) => `https://crt.name/v1/search?apex=${encodeURIComponent(d)}` },
+  { id: 'wayback', name: 'Wayback', hint: '历史快照，找回已下线老系统', needsDomain: true, build: (d) => `https://web.archive.org/web/*/${encodeURIComponent(d)}/*` },
+  { id: 'virustotal', name: 'VirusTotal', hint: '子域与解析记录', needsDomain: true, build: (d) => `https://www.virustotal.com/gui/domain/${encodeURIComponent(d)}/relations` },
+  { id: 'shodan', name: 'Shodan', hint: '海外资产与开放服务', needsDomain: true, build: (d) => `https://www.shodan.io/search?query=${encodeURIComponent(d)}` },
+  { id: 'aiqicha', name: '爱企查', hint: '查主办单位与关联域名', needsDomain: true, build: (d) => `https://aiqicha.baidu.com/s?q=${encodeURIComponent(d)}` },
+  { id: 'beian', name: 'ICP 备案', hint: '工信部备案查询', needsDomain: false, build: () => 'https://beian.miit.gov.cn/#/Integrated/recordQuery' }
 ]
 export const getPlatform = (id: string): AssetPlatform | undefined => PLATFORMS.find((p) => p.id === id)
 export const supportsMode = (platform: AssetPlatform, mode: string): boolean => typeof platform.query[mode] === 'function'
+
+export interface AssetMatrixRow {
+  mode: string
+  modeHint: string
+  platform: string
+  tip: string
+  query: string
+  status: 'ok' | 'unsupported' | 'needKeyword' | 'needDomain'
+}
+
+/** 平台 × 模式完整矩阵；缺条件的格子保留并给出原因，而不是整行消失 */
+export function buildAssetMatrix(domain: string, keyword: string): AssetMatrixRow[] {
+  const d = (domain || '').trim()
+  const k = (keyword || '').trim()
+  const rows: AssetMatrixRow[] = []
+  for (const m of ASSET_MODES) for (const p of PLATFORMS) {
+    const base: AssetMatrixRow = { mode: m.name, modeHint: m.hint, platform: p.name, tip: p.tip, query: '', status: 'ok' }
+    if (!d) rows.push({ ...base, status: 'needDomain' })
+    else if (!supportsMode(p, m.id)) rows.push({ ...base, status: 'unsupported' })
+    else if (m.needsKeyword && !k) rows.push({ ...base, status: 'needKeyword' })
+    else {
+      const built = buildAsset(p.id, m.id, { domain: d, keyword: k })
+      rows.push(built ? { ...base, query: built.query } : { ...base, status: 'needKeyword' })
+    }
+  }
+  return rows
+}
+
+/** 侦察入口只产出地址文本，不跳转 */
+export function buildExtraSources(domain: string): Array<{ name: string; hint: string; addr: string }> {
+  const d = (domain || '').trim()
+  return EXTRA_SOURCES.map((s) => ({ name: s.name, hint: s.hint, addr: !s.needsDomain || d ? s.build(d) : '' }))
+}
 export function buildAsset(platformId: string, mode: string, target: AssetTarget | null | undefined): Record<string, any> | null {
   const platform = getPlatform(platformId)
   if (!platform || !target || !target.domain) return null

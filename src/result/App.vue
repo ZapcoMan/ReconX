@@ -196,26 +196,44 @@
 
       <el-tab-pane label="Dork 与资产测绘" name="dork">
         <div class="bar" style="margin-bottom:8px">
+          <el-input v-model="assetDomain" size="small" placeholder="目标主域" style="width:220px" clearable />
           <el-select v-model="dorkEngine" size="small" style="width:120px">
             <el-option label="Google" value="google" />
             <el-option label="Bing" value="bing" />
             <el-option label="Baidu" value="baidu" />
           </el-select>
-          <span class="tip">仅生成查询，请在你已获授权的范围内自行打开。</span>
+          <span class="tip">本页只生成查询语法与检索地址，扩展不会自动打开标签页或发生跳转；请在已授权范围内自行核对。</span>
         </div>
+
+        <h3>Dork 语法（共 {{ dorkItems.length }} 条）</h3>
         <el-table :data="dorkItems" size="small" max-height="300">
           <el-table-column prop="category" label="类别" width="120" />
           <el-table-column prop="name" label="名称" width="160" />
           <el-table-column prop="risk" label="风险" width="80" />
-          <el-table-column label="查询"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
-          <el-table-column label="" width="90"><template #default="{ row }"><el-button size="small" text @click="copyText(row.url)">复制链接</el-button></template></el-table-column>
+          <el-table-column label="查询语法"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
+          <el-table-column label="" width="100"><template #default="{ row }"><el-button size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
         </el-table>
-        <h3>资产测绘查询（{{ bundle.meta.host }}）</h3>
-        <el-table :data="assetRows" size="small" max-height="260">
-          <el-table-column prop="platform" label="平台" width="140" />
-          <el-table-column prop="mode" label="模式" width="120" />
-          <el-table-column label="查询"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
-          <el-table-column label="" width="90"><template #default="{ row }"><el-button size="small" text @click="copyText(row.url)">复制链接</el-button></template></el-table-column>
+
+        <h3>资产测绘查询（4 平台 × 4 模式）</h3>
+        <div class="bar" style="margin-bottom:8px">
+          <el-input v-model="assetKeyword" size="small" placeholder="关键词：组件指纹档填组件名（如 Nacos / 泛微），备案主体档填单位名称" style="width:460px" clearable />
+        </div>
+        <el-table :data="assetMatrix" size="small" max-height="460">
+          <el-table-column prop="mode" label="模式" width="100" />
+          <el-table-column label="用途" width="220"><template #default="{ row }"><span class="muted">{{ row.modeHint }}</span></template></el-table-column>
+          <el-table-column prop="platform" label="平台" width="110" />
+          <el-table-column label="账号限制" width="170"><template #default="{ row }"><span class="muted">{{ row.tip }}</span></template></el-table-column>
+          <el-table-column label="查询语法"><template #default="{ row }"><code v-if="row.query">{{ row.query }}</code><span v-else class="muted">{{ assetStatus[row.status] }}</span></template></el-table-column>
+          <el-table-column label="" width="100"><template #default="{ row }"><el-button v-if="row.query" size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
+        </el-table>
+
+        <h3>侦察入口</h3>
+        <div class="tip">这些入口本身是站点检索页，此处只给出构造好的地址文本供你复制，不做跳转。</div>
+        <el-table :data="extraSourceRows" size="small" max-height="260">
+          <el-table-column prop="name" label="入口" width="140" />
+          <el-table-column prop="hint" label="用途" width="320"><template #default="{ row }"><span class="muted">{{ row.hint }}</span></template></el-table-column>
+          <el-table-column label="检索地址"><template #default="{ row }"><code v-if="row.addr">{{ row.addr }}</code><span v-else class="muted">需填域名</span></template></el-table-column>
+          <el-table-column label="" width="100"><template #default="{ row }"><el-button v-if="row.addr" size="small" text @click="copyText(row.addr)">复制地址</el-button></template></el-table-column>
         </el-table>
       </el-tab-pane>
 
@@ -233,7 +251,7 @@ import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
 import Pager from './Pager.vue'
 import { listPackage, toSearchItems } from '../core/dork-library'
-import { PLATFORMS, ASSET_MODES, buildAsset } from '../core/asset-search'
+import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
 const tab = ref('overview')
@@ -303,6 +321,7 @@ onMounted(async () => {
   applyTheme(resolveTheme(settings && settings.theme))
   bundle.value = lastBundle || null
   live.value = liveState || { updatedAt: 0 }
+  assetDomain.value = (lastBundle && lastBundle.meta && lastBundle.meta.host) || ''
 })
 
 async function copyRaw(): Promise<void> {
@@ -320,20 +339,16 @@ async function copyRaw(): Promise<void> {
 }
 const dorkEngine = ref('google')
 const dorkItems = computed(() => {
-  const host = bundle.value && bundle.value.meta && bundle.value.meta.host
+  const host = assetDomain.value.trim() || (bundle.value && bundle.value.meta && bundle.value.meta.host)
   if (!host) return []
   return toSearchItems(listPackage('general'), host, dorkEngine.value)
 })
-const assetRows = computed(() => {
-  const host = bundle.value && bundle.value.meta && bundle.value.meta.host
-  const rows: Array<{ platform: string; mode: string; url: string; query: string }> = []
-  if (!host) return rows
-  for (const p of PLATFORMS) for (const m of ASSET_MODES) {
-    const built = buildAsset(p.id, m.id, { domain: host })
-    if (built) rows.push({ platform: built.platform, mode: m.name, url: built.url, query: built.query })
-  }
-  return rows
-})
+const assetDomain = ref('')
+const assetKeyword = ref('')
+const assetStatus: Record<string, string> = { unsupported: '该平台不支持', needKeyword: '需填关键词', needDomain: '需填域名' }
+
+const assetMatrix = computed(() => buildAssetMatrix(assetDomain.value, assetKeyword.value))
+const extraSourceRows = computed(() => buildExtraSources(assetDomain.value))
 function copyText(text: string): void {
   try {
     navigator.clipboard.writeText(text)
@@ -363,6 +378,7 @@ function selectPre(e: MouseEvent): void {
 .u { flex: 1; color: var(--rx-muted); font-family: var(--rx-font); font-size: 12px; word-break: break-all; }
 h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
 .tip { color: var(--rx-muted); font-size: 12px; margin-bottom: 8px; }
+.muted { color: var(--rx-muted); font-size: 12px; }
 .empty { padding: 40px; text-align: center; color: var(--rx-muted); }
 .rawjson { background: var(--rx-code-bg); color: var(--rx-text); padding: 14px; border-radius: 8px; box-shadow: var(--rx-glow); max-height: 560px; overflow: auto; font-family: var(--rx-font); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; cursor: text; }
 .mb { margin-bottom: 12px; }
