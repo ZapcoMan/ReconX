@@ -124,7 +124,7 @@ const manifest = defineManifest({
   name: 'ReconX - 授权范围信息收集',
   version: '0.2.0',
   description:
-    '面向已授权目标（渗透测试/漏洞赏金/OSINT/自查）的浏览器侦察助手：技术栈与WAF指纹、响应头与Cookie分析、JS敏感信息扫描、链接与参数收集、只读前端路由枚举。内置允许域范围管控。',
+    '已授权目标的浏览器侦察工作台：技术栈/WAF 指纹、响应头与 Cookie 分析、JS 敏感信息扫描、链接与参数收集、前端路由与 API 枚举；主动探测含客户端路由接管（不绕过服务端鉴权）。内置允许域范围管控。',
   action: {
     default_popup: 'src/popup/popup.html',
     default_title: 'ReconX',
