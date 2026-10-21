@@ -1,7 +1,7 @@
-name: 构建扩展安装包 (zip)
+name: 构建并发布 Release
 
-# 打 vX.Y.Z 标签时自动构建 dist/ 并打包成 zip，供下载后手动上传 GitHub Release。
-# 也可在 Actions 页手动触发（用于测试构建）。
+# 打 vX.Y.Z 标签时：类型检查 + 构建 dist → 打包 zip → 用附注标签正文创建 GitHub Release。
+# 手动触发只构建并上传 Artifact，不会发布（避免误发）。
 on:
   push:
     tags:
@@ -9,13 +9,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
     runs-on: ubuntu-latest
     steps:
+      # fetch-tags 是为了能读到附注标签正文，用作 Release 说明
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          fetch-tags: true
 
       - uses: actions/setup-node@v4
         with:
@@ -34,9 +38,41 @@ jobs:
           cd ..
           ls -l "ReconX-${VERSION}.zip"
 
-      # 产物落在 Actions 的 Artifacts 区，下载后自行上传到 Release 资源
       - uses: actions/upload-artifact@v4
         with:
           name: ReconX-${{ github.ref_name }}
           path: ReconX-*.zip
           if-no-files-found: error
+
+      # Release 说明直接取附注标签正文，避免版本说明在代码与 Release 两处各写一遍
+      - name: 生成发布说明
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then echo "ReconX ${GITHUB_REF_NAME}" > RELEASE_NOTES.md; fi
+          {
+            echo ''
+            echo '## 安装'
+            echo ''
+            echo "1. 下载并解压 \`ReconX-${GITHUB_REF_NAME}.zip\`"
+            echo '2. 打开 `chrome://extensions`，开启右上角「开发者模式」'
+            echo '3. 点「加载已解压的扩展程序」，选择解压出来的目录'
+            echo ''
+            echo '需 Chrome 111+。能力边界与已知限制见仓库 README 与 `docs/`。'
+          } >> RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: 创建或更新 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET="ReconX-${GITHUB_REF_NAME}.zip"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$GITHUB_REF_NAME" "$ASSET" \
+              --title "ReconX ${GITHUB_REF_NAME}" \
+              --notes-file RELEASE_NOTES.md
+          fi
