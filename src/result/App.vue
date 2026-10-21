@@ -19,7 +19,7 @@
           <el-descriptions-item label="同源端点">{{ (bundle.links && bundle.links.sameOriginCount) || 0 }}</el-descriptions-item>
         </el-descriptions>
         <h3>风险摘要</h3>
-        <el-table :data="bundle.risks || []" size="small" max-height="260">
+        <el-table :data="bundle.risks || []" size="small">
           <el-table-column prop="level" label="等级" width="90" />
           <el-table-column prop="category" label="类别" width="120" />
           <el-table-column prop="summary" label="摘要" />
@@ -81,7 +81,7 @@
         </template>
 
         <h3>路由并表（共 {{ routeMatrix.length }} 条）</h3>
-        <el-table v-if="routeMatrix.length" :data="paged('routeMatrix', routeMatrix)" size="small" max-height="420">
+        <el-table v-if="routeMatrix.length" :data="paged('routeMatrix', routeMatrix)" size="small">
           <el-table-column prop="path" label="路径" />
           <el-table-column :label="'✔ ' + primary.label" width="150"><template #default="{ row }">{{ row.inPrimary ? '✔' : '' }}</template></el-table-column>
           <el-table-column :label="'✔ ' + auxiliary.label" width="150"><template #default="{ row }">{{ row.inAux ? '✔' : '' }}</template></el-table-column>
@@ -92,13 +92,13 @@
       </el-tab-pane>
       <el-tab-pane label="API" name="api">
         <h3>已调用接口（performance fetch/xhr，共 {{ ((bundle.api && bundle.api.liveApis) || []).length }} 条）</h3>
-        <el-table :data="paged('apiLive', bundle.api && bundle.api.liveApis)" size="small" max-height="420">
+        <el-table :data="paged('apiLive', bundle.api && bundle.api.liveApis)" size="small">
           <el-table-column prop="path" label="路径" />
           <el-table-column label="URL"><template #default="{ row }"><code>{{ row.url }}</code></template></el-table-column>
         </el-table>
         <Pager v-model:page="pg.apiLive.page" v-model:size="pg.apiLive.size" :total="((bundle.api && bundle.api.liveApis) || []).length" />
         <h3>静态提取端点（含是否被调用，共 {{ ((bundle.api && bundle.api.staticApis) || []).length }} 条）</h3>
-        <el-table :data="paged('apiStatic', bundle.api && bundle.api.staticApis)" size="small" max-height="420">
+        <el-table :data="paged('apiStatic', bundle.api && bundle.api.staticApis)" size="small">
           <el-table-column prop="path" label="路径" />
           <el-table-column label="已调用" width="90"><template #default="{ row }">{{ row.called ? '是' : '否' }}</template></el-table-column>
           <el-table-column prop="hasParams" label="含参数" width="90" />
@@ -111,7 +111,7 @@
         <template v-if="bundle.security">
           <el-alert :title="'整体风险：' + bundle.security.summary.overallRisk + ' · 敏感API ' + bundle.security.summary.sensitiveApiCount + ' · 未保护路由 ' + bundle.security.summary.unprotectedRoutes" type="warning" :closable="false" />
           <h3>敏感接口线索（共 {{ (bundle.security.sensitiveApis || []).length }} 条，全部保留可翻页查看）</h3>
-          <el-table :data="paged('sensitive', bundle.security.sensitiveApis)" size="small" max-height="420">
+          <el-table :data="paged('sensitive', bundle.security.sensitiveApis)" size="small">
             <el-table-column prop="category" label="类别" width="120" />
             <el-table-column prop="riskLevel" label="风险" width="90" />
             <el-table-column prop="path" label="路径" />
@@ -126,7 +126,7 @@
 
       <el-tab-pane label="主动探测" name="probes">
         <template v-if="bundle.probes && bundle.probes.performed">
-          <el-table :data="bundle.probes.results || []" size="small" max-height="360">
+          <el-table :data="bundle.probes.results || []" size="small">
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="status" label="状态" width="80" />
             <el-table-column prop="bytes" label="字节" width="90" />
@@ -135,7 +135,7 @@
           </el-table>
           <template v-if="bundle.probes.routes && bundle.probes.routes.applicable">
             <h3>前端路由可达性（{{ bundle.probes.routes.framework }} · {{ bundle.probes.routes.routerKind }}）</h3>
-            <el-table :data="bundle.probes.routes.routeProbes || []" size="small" max-height="320">
+            <el-table :data="bundle.probes.routes.routeProbes || []" size="small">
               <el-table-column prop="path" label="路由" />
               <el-table-column prop="status" label="状态" width="80" />
               <el-table-column prop="bytes" label="字节" width="90" />
@@ -178,7 +178,7 @@
         <h3>API 提取</h3>
         <template v-if="liveApi">
           <div class="tip">已调用 {{ liveApiStats.liveCount }} · 静态 {{ liveApiStats.staticCount }}（未调用 {{ liveApiStats.uncalledCount }}） · Sourcemap {{ liveApiStats.sourceMapCount }} · JS {{ liveApiStats.scriptCount }} 个 / 内联 {{ liveApiStats.inlineCount }} 段 / 失败 {{ liveApiStats.failedCount }} 个</div>
-          <el-table :data="paged('liveApiStatic', liveApi.staticApis)" size="small" max-height="420">
+          <el-table :data="paged('liveApiStatic', liveApi.staticApis)" size="small">
             <el-table-column prop="path" label="路径" />
             <el-table-column label="完整 URL"><template #default="{ row }"><code>{{ row.fullUrl || row.url || row.path }}</code></template></el-table-column>
             <el-table-column label="已调用" width="90"><template #default="{ row }">{{ row.called ? '是' : '否' }}</template></el-table-column>
@@ -206,7 +206,7 @@
         </div>
 
         <h3>Dork 语法（共 {{ dorkItems.length }} 条）</h3>
-        <el-table :data="dorkItems" size="small" max-height="300">
+        <el-table :data="dorkItems" size="small">
           <el-table-column prop="category" label="类别" width="120" />
           <el-table-column prop="name" label="名称" width="160" />
           <el-table-column prop="risk" label="风险" width="80" />
@@ -218,7 +218,7 @@
         <div class="bar" style="margin-bottom:8px">
           <el-input v-model="assetKeyword" size="small" placeholder="关键词：组件指纹档填组件名（如 Nacos / 泛微），备案主体档填单位名称" style="width:460px" clearable />
         </div>
-        <el-table :data="assetMatrix" size="small" max-height="460">
+        <el-table :data="assetMatrix" size="small">
           <el-table-column prop="mode" label="模式" width="100" />
           <el-table-column label="用途" width="220"><template #default="{ row }"><span class="muted">{{ row.modeHint }}</span></template></el-table-column>
           <el-table-column prop="platform" label="平台" width="110" />
@@ -229,7 +229,7 @@
 
         <h3>侦察入口</h3>
         <div class="tip">这些入口本身是站点检索页，此处只给出构造好的地址文本供你复制，不做跳转。</div>
-        <el-table :data="extraSourceRows" size="small" max-height="260">
+        <el-table :data="extraSourceRows" size="small">
           <el-table-column prop="name" label="入口" width="140" />
           <el-table-column prop="hint" label="用途" width="320"><template #default="{ row }"><span class="muted">{{ row.hint }}</span></template></el-table-column>
           <el-table-column label="检索地址"><template #default="{ row }"><code v-if="row.addr">{{ row.addr }}</code><span v-else class="muted">需填域名</span></template></el-table-column>
