@@ -11,8 +11,8 @@
         <el-descriptions :column="2" border>
           <el-descriptions-item label="主机">{{ bundle.meta.host }}</el-descriptions-item>
           <el-descriptions-item label="采集时间">{{ new Date(bundle.meta.collectedAt).toLocaleString('zh-CN') }}</el-descriptions-item>
-          <el-descriptions-item label="框架">{{ (bundle.routes && bundle.routes.framework) || '-' }} {{ (bundle.routes && (bundle.routes.vueVersion || bundle.routes.reactVersion)) || '' }}</el-descriptions-item>
-          <el-descriptions-item label="路由库">{{ (bundle.routes && bundle.routes.routerKind) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="框架（主源）">{{ primary.frameworkText }} {{ primary.versionText !== '—' ? primary.versionText : '' }}</el-descriptions-item>
+          <el-descriptions-item label="路由库（主源）">{{ primary.routerKind }}</el-descriptions-item>
           <el-descriptions-item label="端点总数">{{ (bundle.links && bundle.links.total) || 0 }}</el-descriptions-item>
           <el-descriptions-item label="同源端点">{{ (bundle.links && bundle.links.sameOriginCount) || 0 }}</el-descriptions-item>
         </el-descriptions>
@@ -25,6 +25,7 @@
       </el-tab-pane>
 
       <el-tab-pane label="技术栈" name="tech">
+        <div class="tip">下表的置信度与证据在采集期计算，输入来自辅源 routerProbe 与响应头/资源指纹；框架与路由库的最终结论以「路由（双源）」分区的主源为准。</div>
         <el-table :data="techRows" size="small">
           <el-table-column prop="name" label="名称" width="200" />
           <el-table-column prop="category" label="类别" width="120" />
@@ -40,13 +41,51 @@
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="路由" name="routes">
-        <div class="tip">框架：{{ (bundle.routes && bundle.routes.framework) || '-' }} · {{ (bundle.routes && bundle.routes.routerKind) || '未检出路由' }} · 基础路径 {{ (bundle.routes && bundle.routes.routerBase) || '-' }} · 计数 {{ (bundle.routes && bundle.routes.allRoutesCount) || 0 }}</div>
-        <el-table :data="(bundle.routes && bundle.routes.allRoutes) || []" size="small" max-height="420">
+      <el-tab-pane label="路由（双源）" name="routes">
+        <div class="tip">探测采用双路并列：主源为页面侧 <b>King-CrackX detector</b> 的全量分析结果，辅源为 background 同步注入的 <b>ReconX routerProbe</b>。主源识别不出技术栈时，辅源自动升为兜底主源；即使主源可用，辅源结果也一并列出，供交叉核对与人工判断。</div>
+
+        <el-alert :type="compare.isFallback ? 'warning' : (compare.divergence.length ? 'warning' : 'success')" :closable="false" :title="compare.headline" class="mb" />
+
+        <div class="dual">
+          <div class="card">
+            <div class="card-h"><el-tag size="small" :type="primary.role === 'fallback' ? 'warning' : 'primary'">{{ roleText[primary.role] }}</el-tag> {{ primary.label }}</div>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="技术栈">{{ primary.frameworkText }}</el-descriptions-item>
+              <el-descriptions-item label="版本">{{ primary.versionText }}</el-descriptions-item>
+              <el-descriptions-item label="路由库">{{ primary.routerKind }}</el-descriptions-item>
+              <el-descriptions-item label="基础路径">{{ primary.routerBase }}</el-descriptions-item>
+              <el-descriptions-item label="页面推断路径">{{ primary.detectedBasePath }}</el-descriptions-item>
+              <el-descriptions-item label="路由条数">{{ primary.routeCount }}</el-descriptions-item>
+              <el-descriptions-item v-if="primary.note" label="说明">{{ primary.note }}</el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <div class="card">
+            <div class="card-h"><el-tag size="small" :type="auxiliary.usable ? 'info' : 'danger'">{{ roleText[auxiliary.role] }}</el-tag> {{ auxiliary.label }}</div>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="技术栈">{{ auxiliary.frameworkText }}</el-descriptions-item>
+              <el-descriptions-item label="版本">{{ auxiliary.versionText }}</el-descriptions-item>
+              <el-descriptions-item label="路由库">{{ auxiliary.routerKind }}</el-descriptions-item>
+              <el-descriptions-item label="基础路径">{{ auxiliary.routerBase }}</el-descriptions-item>
+              <el-descriptions-item label="页面推断路径">{{ auxiliary.detectedBasePath }}</el-descriptions-item>
+              <el-descriptions-item label="路由条数">{{ auxiliary.routeCount }}</el-descriptions-item>
+              <el-descriptions-item v-if="auxiliary.note" label="说明">{{ auxiliary.note }}</el-descriptions-item>
+            </el-descriptions>
+          </div>
+        </div>
+
+        <template v-if="compare.divergence.length">
+          <h3>两路分歧</h3>
+          <ul class="div"><li v-for="(d, i) in compare.divergence" :key="i">{{ d }}</li></ul>
+        </template>
+
+        <h3>路由并表（{{ routeMatrix.length }} 条）</h3>
+        <el-table v-if="routeMatrix.length" :data="routeMatrix" size="small" max-height="420">
           <el-table-column prop="path" label="路径" />
-          <el-table-column prop="name" label="名称" width="180" />
-          <el-table-column label="meta" width="260"><template #default="{ row }"><code>{{ JSON.stringify(row.meta || {}) }}</code></template></el-table-column>
+          <el-table-column :label="'✔ ' + primary.label" width="150"><template #default="{ row }">{{ row.inPrimary ? '✔' : '' }}</template></el-table-column>
+          <el-table-column :label="'✔ ' + auxiliary.label" width="150"><template #default="{ row }">{{ row.inAux ? '✔' : '' }}</template></el-table-column>
+          <el-table-column label="仅一方" width="110"><template #default="{ row }">{{ row.inPrimary !== row.inAux ? '需核对' : '' }}</template></el-table-column>
         </el-table>
+        <div v-else class="empty">两路均未给出可展示的路由条目。</div>
       </el-tab-pane>
       <el-tab-pane label="API" name="api">
         <h3>已调用接口（performance fetch/xhr）</h3>
@@ -128,13 +167,7 @@
         </el-descriptions>
         <div v-else class="empty">暂无拦截统计回传。</div>
 
-        <h3>路由分析（{{ liveRoutes.length }} 条）</h3>
-        <el-table v-if="liveRoutes.length" :data="liveRoutes" size="small" max-height="320">
-          <el-table-column prop="path" label="路径" />
-          <el-table-column prop="name" label="名称" width="180" />
-          <el-table-column label="meta" width="260"><template #default="{ row }"><code>{{ JSON.stringify(row.meta || {}) }}</code></template></el-table-column>
-        </el-table>
-        <div v-else class="empty">暂无路由分析回传。</div>
+        <div class="tip">detector 的路由分析结果已并入「路由（双源）」分区，与辅源并排呈现，此处不再重复。</div>
 
         <h3>API 提取</h3>
         <template v-if="liveApi">
@@ -190,6 +223,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { applyTheme, resolveTheme } from '../shared/theme'
+import { buildProbeCompare } from '../core/probe-sources'
 import { listPackage, toSearchItems } from '../core/dork-library'
 import { PLATFORMS, ASSET_MODES, buildAsset } from '../core/asset-search'
 const bundle = ref<any>(null)
@@ -203,7 +237,6 @@ const techRows = computed(() => {
 })
 
 const liveTime = computed(() => (live.value.updatedAt ? new Date(live.value.updatedAt).toLocaleString('zh-CN') : '—'))
-const liveRoutes = computed<any[]>(() => (live.value.routerAnalysis && live.value.routerAnalysis.allRoutes) || [])
 const liveAllIn = computed<any | null>(() => (live.value.allInStatus && live.value.allInStatus.injectedAt ? live.value.allInStatus : null))
 const liveApi = computed<any | null>(() => live.value.apiExtractResult || null)
 const liveApiStats = computed(() => {
@@ -220,6 +253,28 @@ const liveApiStats = computed(() => {
   }
 })
 const liveErrors = computed<Array<[string, string]>>(() => Object.entries((live.value.errors || {}) as Record<string, string>))
+
+// 双源对比：主源 King detector（live.routerAnalysis），辅源 routerProbe（bundle.routes）
+const compare = computed(() => buildProbeCompare(live.value.routerAnalysis, bundle.value && bundle.value.routes))
+const primary = computed(() => compare.value.primary)
+const auxiliary = computed(() => compare.value.auxiliary)
+const roleText: Record<string, string> = { primary: '主源', auxiliary: '辅源', fallback: '兜底主源', unavailable: '无可用结果' }
+
+/** 按路径合并两路路由，标出各自命中，便于人工判断分歧 */
+const routeMatrix = computed(() => {
+  const map = new Map<string, { path: string; inPrimary: boolean; inAux: boolean }>()
+  const add = (list: any[], key: 'inPrimary' | 'inAux') => {
+    (list || []).forEach((r: any) => {
+      const p = String(r.path)
+      const row = map.get(p) || { path: p, inPrimary: false, inAux: false }
+      row[key] = true
+      map.set(p, row)
+    })
+  }
+  add(primary.value.routes, 'inPrimary')
+  add(auxiliary.value.routes, 'inAux')
+  return Array.from(map.values()).sort((a, b) => (Number(b.inPrimary) - Number(a.inPrimary)) || String(a.path).localeCompare(String(b.path)))
+})
 
 onMounted(async () => {
   const { lastBundle, settings, liveState } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState'])
@@ -288,4 +343,10 @@ h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
 .tip { color: var(--rx-muted); font-size: 12px; margin-bottom: 8px; }
 .empty { padding: 40px; text-align: center; color: var(--rx-muted); }
 .rawjson { background: var(--rx-code-bg); color: var(--rx-text); padding: 14px; border-radius: 8px; box-shadow: var(--rx-glow); max-height: 560px; overflow: auto; font-family: var(--rx-font); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; cursor: text; }
+.mb { margin-bottom: 12px; }
+.dual { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; }
+.card { border: 1px solid var(--rx-border); border-radius: 8px; padding: 10px 12px; background: var(--rx-bg-elev); }
+.card-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--rx-accent); }
+.div { margin: 0 0 10px; padding-left: 20px; color: var(--rx-text); font-size: 13px; }
+.div li { margin-bottom: 4px; }
 </style>
