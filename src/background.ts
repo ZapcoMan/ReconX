@@ -26,8 +26,8 @@ async function registerAllInContentScript(): Promise<void> {
     }
     const scope = await getScope()
     const matches = scope.hosts.map((h) => h.origin + '/*')
-    // 允许域为空时只注销，绝不退化为全域注册
-    if (!matches.length) return
+    // 允许域为空、或主动探测总开关关闭时，只注销不注册
+    if (!matches.length || !(await getSettings()).activeProbe) return
     await chrome.scripting.registerContentScripts([{
       id: ALL_IN_SCRIPT_ID,
       matches,
@@ -349,6 +349,7 @@ async function injectAllIn(tabId: number): Promise<{ ok: boolean; injected: bool
 
 async function runProbes(origin: string, host: string, tabId?: number): Promise<any> {
   if (!(await inScope(host))) return { ok: false, error: 'out_of_scope' }
+  if (!(await getSettings()).activeProbe) return { ok: false, error: 'probe_disabled' }
   const results: any[] = []
   const probes = SensitiveRules.PATH_PROBES
   for (let i = 0; i < probes.length; i++) {
@@ -574,7 +575,13 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
       return true
     }
     case 'SET_SETTINGS': {
-      ;(async () => { const cur = await getSettings(); await chrome.storage.local.set({ settings: Object.assign(cur, msg.patch || {}) }); sendResponse({ ok: true }) })()
+      ;(async () => {
+        const cur = await getSettings()
+        await chrome.storage.local.set({ settings: Object.assign(cur, msg.patch || {}) })
+        // activeProbe 变化会决定常驻接管脚本是否注册，需同步重算
+        await registerAllInContentScript()
+        sendResponse({ ok: true })
+      })()
       return true
     }
     case 'COLLECT': {

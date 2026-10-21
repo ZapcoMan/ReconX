@@ -31,7 +31,12 @@
     <section>
       <h2>采集参数</h2>
       <el-form label-width="160px">
-        <el-form-item label="默认执行主动探测"><el-switch v-model="settings.activeProbe" /></el-form-item>
+        <el-form-item label="启用主动探测">
+          <div class="field">
+            <el-switch v-model="settings.activeProbe" />
+            <span class="hint">开启后才允许执行敏感路径与路由可达性探测，并把常驻接管脚本注册到允许域；关闭时探测按钮不可用，已注册的脚本会被撤销。</span>
+          </div>
+        </el-form-item>
         <el-form-item label="最多扫描 JS 文件数"><el-input-number v-model="settings.maxJsFiles" :min="1" :max="200" /></el-form-item>
         <el-form-item label="并发抓取数"><el-input-number v-model="settings.maxConcurrent" :min="1" :max="12" /></el-form-item>
         <el-form-item><el-button type="primary" @click="save">保存设置</el-button></el-form-item>
@@ -48,6 +53,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import * as M from '../shared/messaging'
 import type { ScopeHost, Settings } from '../types'
 import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 import { applyTheme, resolveTheme } from '../shared/theme'
@@ -66,7 +72,8 @@ onMounted(async () => {
 })
 
 async function persist(): Promise<void> {
-  await chrome.storage.local.set({ settings: { ...settings } })
+  // 走 background 而不是直写存储：activeProbe 变化要同步重算常驻接管脚本的注册
+  await M.setSettings({ ...settings })
 }
 
 function changeTheme(id: ThemeId): void {
@@ -115,4 +122,6 @@ section { margin-bottom: 18px; }
 .dots { display: inline-flex; gap: 4px; }
 .dots i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--rx-border); }
 .note { color: var(--rx-muted); font-size: 13px; background: var(--rx-bg-soft); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--rx-border); }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.hint { color: var(--rx-muted); font-size: 12px; line-height: 1.5; }
 </style>
