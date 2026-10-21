@@ -472,12 +472,23 @@ async function processLiveQueue(): Promise<void> {
   }
 }
 
-function enqueueLive(patch: (s: LiveSnapshot) => void): void {
+function enqueueLive(patch: (s: LiveSnapshot) => void, attempt = 0): void {
   liveQueue.push(async () => {
     const stored = await chrome.storage.local.get('liveState')
     const next: LiveSnapshot = Object.assign({ updatedAt: Date.now() }, stored.liveState || {})
     patch(next)
-    await chrome.storage.local.set({ liveState: next })
+    try {
+      await chrome.storage.local.set({ liveState: next })
+    } catch (e) {
+      // 只补排一次：写入失败多为配额或瞬时抖动，重排到队尾等前序任务先落地。
+      // 第二次仍失败则丢弃，避免持续超配额时无限自循环。
+      if (attempt === 0) {
+        console.warn('[ReconX] live write failed, requeued once:', e)
+        enqueueLive(patch, 1)
+      } else {
+        console.error('[ReconX] live write failed after retry, dropped:', e)
+      }
+    }
   })
   processLiveQueue()
 }
