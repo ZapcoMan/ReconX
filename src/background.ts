@@ -8,6 +8,7 @@ import * as TechStack from './core/tech-stack'
 import { computeExtras } from './core/collect-extras'
 import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
+import { shrinkForStorage } from './core/storage-fallback'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
 
@@ -241,7 +242,7 @@ function buildLinks(payload: any, host: string): any {
   ;(payload.inlineEndpoints || []).forEach((p: string) => add(norm(p), 'inline'))
   return {
     total: endpoints.length,
-    endpoints: endpoints.slice(0, 2000),
+    endpoints,
     sameOriginCount: endpoints.filter((e) => e.same).length,
     byHost: Array.from(byHost.entries()).map(([h, c]) => ({ host: h, count: c })).sort((a, b) => b.count - a.count),
     params: Array.from(paramCount.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
@@ -394,6 +395,18 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
   return { ok: true, results, routes, allIn: allInResult }
 }
 
+// ---------------- 结果落盘（全量优先，超配额才降级截断） ----------------
+async function persistBundle(bundle: any): Promise<void> {
+  try {
+    await chrome.storage.local.set({ lastBundle: bundle })
+    return
+  } catch (e: any) {
+    // 全量写失败（多为配额）时退回截断副本，绝不让整次采集白做
+    await chrome.storage.local.set({ lastBundle: shrinkForStorage(bundle, String((e && e.message) || e)) })
+    console.warn('[ReconX] bundle over quota, saved truncated copy:', e)
+  }
+}
+
 // ---------------- 主收集流程 ----------------
 async function collect(tabId: number): Promise<any> {
   let tab: chrome.tabs.Tab
@@ -450,7 +463,7 @@ async function collect(tabId: number): Promise<any> {
     bundle.routes = { error: String((e && e.message) || e) }
   }
 
-  await chrome.storage.local.set({ lastBundle: bundle })
+  await persistBundle(bundle)
   return { ok: true, bundle }
 }
 
@@ -583,7 +596,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
               allInStatus: live.allInStatus || null,
               allIn: res.allIn
             }
-            await chrome.storage.local.set({ lastBundle })
+            await persistBundle(lastBundle)
           }
         }
         sendResponse(res)

@@ -34,9 +34,9 @@ export function computeExtras(ctx: ComputeExtrasContext): Record<string, any> {
   try { routeBuild = buildRouteUrlList({ routes: routesList, currentUrl: tab.url, routerBase: routerInfo.routerBase, detectedBasePath: null }) } catch { /* */ }
   const security = performSecurityAudit({ pageUrl: tab.url, liveApis, staticApis, routes: routesList, sourceMaps })
   let classified: any[] = []
-  try { classified = rankItems(links.endpoints || []).filter((e) => e.level).slice(0, 500) } catch { /* */ }
-  const routes = { framework: routerInfo.framework, vueVersion: routerInfo.vueVersion, reactVersion: routerInfo.reactVersion, reactRouterVersion: routerInfo.reactRouterVersion, next: !!routerInfo.next, routerDetected: !!routerInfo.routerDetected, routerKind: routerInfo.routerKind || null, routerBase: routeBuild.routerBase || routerInfo.routerBase || null, allRoutesCount: routesList.length, allRoutes: routesList.slice(0, 300), fullUrls: (routeBuild.items || []).slice(0, 300), sectionTitle: routeBuild.sectionTitle, anchorFallback, error: routerInfo.error || null }
-  const api = { liveApisCount: liveApis.length, liveApis: liveApis.slice(0, 300), staticApisCount: staticApis.length, uncalledCount: staticApis.filter((a) => !a.called).length, staticApis: staticApis.slice(0, 400), sourceMaps }
+  try { classified = rankItems(links.endpoints || []).filter((e) => e.level) } catch { /* */ }
+  const routes = { framework: routerInfo.framework, vueVersion: routerInfo.vueVersion, reactVersion: routerInfo.reactVersion, reactRouterVersion: routerInfo.reactRouterVersion, next: !!routerInfo.next, routerDetected: !!routerInfo.routerDetected, routerKind: routerInfo.routerKind || null, routerBase: routeBuild.routerBase || routerInfo.routerBase || null, allRoutesCount: routesList.length, allRoutes: routesList, fullUrls: routeBuild.items || [], sectionTitle: routeBuild.sectionTitle, anchorFallback, error: routerInfo.error || null }
+  const api = { liveApisCount: liveApis.length, liveApis, staticApisCount: staticApis.length, uncalledCount: staticApis.filter((a) => !a.called).length, staticApis, sourceMaps }
   let riskNote: Record<string, any> | null = null
   const or = security.summary.overallRisk
   if (or === 'critical' || or === 'high') riskNote = { level: or, category: '前端审计', summary: '审计整体风险 ' + or + '：敏感 API ' + security.summary.sensitiveApiCount + ' 个，未保护路由线索 ' + security.summary.unprotectedRoutes + ' 个' }
