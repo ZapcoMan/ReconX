@@ -197,44 +197,52 @@
       <el-tab-pane label="Dork 与资产测绘" name="dork">
         <div class="bar" style="margin-bottom:8px">
           <el-input v-model="assetDomain" size="small" placeholder="目标主域" style="width:220px" clearable />
-          <el-select v-model="dorkEngine" size="small" style="width:120px">
-            <el-option label="Google" value="google" />
-            <el-option label="Bing" value="bing" />
-            <el-option label="Baidu" value="baidu" />
-          </el-select>
-          <span class="tip">本页只生成查询语法与检索地址，扩展不会自动打开标签页或发生跳转；请在已授权范围内自行核对。</span>
+          <span class="tip">只生成查询语法与检索地址，扩展不会自动打开标签页或发生跳转；请在已授权范围内自行核对。域名对下面三个分区同时生效。</span>
         </div>
 
-        <h3>Dork 语法（共 {{ dorkItems.length }} 条）</h3>
-        <el-table :data="dorkItems" size="small">
-          <el-table-column prop="category" label="类别" width="120" />
-          <el-table-column prop="name" label="名称" width="160" />
-          <el-table-column prop="risk" label="风险" width="80" />
-          <el-table-column label="查询语法"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
-          <el-table-column label="" width="100"><template #default="{ row }"><el-button size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
-        </el-table>
+        <el-tabs v-model="dorkTab" class="subtabs">
+          <el-tab-pane label="Dork 语法" name="queries">
+            <div class="bar" style="margin-bottom:8px">
+              <el-select v-model="dorkEngine" size="small" style="width:120px">
+                <el-option label="Google" value="google" />
+                <el-option label="Bing" value="bing" />
+                <el-option label="Baidu" value="baidu" />
+              </el-select>
+              <span class="tip">共 {{ dorkItems.length }} 条</span>
+            </div>
+            <el-table :data="dorkItems" size="small">
+              <el-table-column prop="category" label="类别" width="120" />
+              <el-table-column prop="name" label="名称" width="160" />
+              <el-table-column prop="risk" label="风险" width="80" />
+              <el-table-column label="查询语法"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
+              <el-table-column label="" width="100"><template #default="{ row }"><el-button size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
+            </el-table>
+          </el-tab-pane>
 
-        <h3>资产测绘查询（4 平台 × 4 模式）</h3>
-        <div class="bar" style="margin-bottom:8px">
-          <el-input v-model="assetKeyword" size="small" placeholder="关键词：组件指纹档填组件名（如 Nacos / 泛微），备案主体档填单位名称" style="width:460px" clearable />
-        </div>
-        <el-table :data="assetMatrix" size="small">
-          <el-table-column prop="mode" label="模式" width="100" />
-          <el-table-column label="用途" width="220"><template #default="{ row }"><span class="muted">{{ row.modeHint }}</span></template></el-table-column>
-          <el-table-column prop="platform" label="平台" width="110" />
-          <el-table-column label="账号限制" width="170"><template #default="{ row }"><span class="muted">{{ row.tip }}</span></template></el-table-column>
-          <el-table-column label="查询语法"><template #default="{ row }"><code v-if="row.query">{{ row.query }}</code><span v-else class="muted">{{ assetStatus[row.status] }}</span></template></el-table-column>
-          <el-table-column label="" width="100"><template #default="{ row }"><el-button v-if="row.query" size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
-        </el-table>
+          <el-tab-pane label="资产测绘（4 平台 × 4 模式）" name="asset">
+            <div class="bar" style="margin-bottom:8px">
+              <el-input v-model="assetKeyword" size="small" placeholder="关键词：组件指纹档填组件名（如 Nacos / 泛微），备案主体档填单位名称" style="width:460px" clearable />
+            </div>
+            <el-table :data="assetMatrix" size="small">
+              <el-table-column prop="mode" label="模式" width="100" />
+              <el-table-column label="用途" width="220"><template #default="{ row }"><span class="muted">{{ row.modeHint }}</span></template></el-table-column>
+              <el-table-column prop="platform" label="平台" width="110" />
+              <el-table-column label="账号限制" width="170"><template #default="{ row }"><span class="muted">{{ row.tip }}</span></template></el-table-column>
+              <el-table-column label="查询语法"><template #default="{ row }"><code v-if="row.query">{{ row.query }}</code><span v-else class="muted">{{ assetStatus[row.status] }}</span></template></el-table-column>
+              <el-table-column label="" width="100"><template #default="{ row }"><el-button v-if="row.query" size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
+            </el-table>
+          </el-tab-pane>
 
-        <h3>侦察入口</h3>
-        <div class="tip">这些入口本身是站点检索页，此处只给出构造好的地址文本供你复制，不做跳转。</div>
-        <el-table :data="extraSourceRows" size="small">
-          <el-table-column prop="name" label="入口" width="140" />
-          <el-table-column prop="hint" label="用途" width="320"><template #default="{ row }"><span class="muted">{{ row.hint }}</span></template></el-table-column>
-          <el-table-column label="检索地址"><template #default="{ row }"><code v-if="row.addr">{{ row.addr }}</code><span v-else class="muted">需填域名</span></template></el-table-column>
-          <el-table-column label="" width="100"><template #default="{ row }"><el-button v-if="row.addr" size="small" text @click="copyText(row.addr)">复制地址</el-button></template></el-table-column>
-        </el-table>
+          <el-tab-pane label="侦察入口" name="extra">
+            <div class="tip">这些入口本身是站点检索页，此处只给出构造好的地址文本供你复制，不做跳转。</div>
+            <el-table :data="extraSourceRows" size="small">
+              <el-table-column prop="name" label="入口" width="140" />
+              <el-table-column prop="hint" label="用途" width="320"><template #default="{ row }"><span class="muted">{{ row.hint }}</span></template></el-table-column>
+              <el-table-column label="检索地址"><template #default="{ row }"><code v-if="row.addr">{{ row.addr }}</code><span v-else class="muted">需填域名</span></template></el-table-column>
+              <el-table-column label="" width="100"><template #default="{ row }"><el-button v-if="row.addr" size="small" text @click="copyText(row.addr)">复制地址</el-button></template></el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
       </el-tab-pane>
 
       <el-tab-pane label="原始 JSON" name="raw">
@@ -338,6 +346,7 @@ async function copyRaw(): Promise<void> {
   }
 }
 const dorkEngine = ref('google')
+const dorkTab = ref('queries')
 const dorkItems = computed(() => {
   const host = assetDomain.value.trim() || (bundle.value && bundle.value.meta && bundle.value.meta.host)
   if (!host) return []
@@ -379,6 +388,8 @@ function selectPre(e: MouseEvent): void {
 h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
 .tip { color: var(--rx-muted); font-size: 12px; margin-bottom: 8px; }
 .muted { color: var(--rx-muted); font-size: 12px; }
+.subtabs { padding-top: 2px; }
+.subtabs :deep(.el-tabs__header) { margin-bottom: 10px; }
 .empty { padding: 40px; text-align: center; color: var(--rx-muted); }
 .rawjson { background: var(--rx-code-bg); color: var(--rx-text); padding: 14px; border-radius: 8px; box-shadow: var(--rx-glow); max-height: 560px; overflow: auto; font-family: var(--rx-font); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; cursor: text; }
 .mb { margin-bottom: 12px; }
