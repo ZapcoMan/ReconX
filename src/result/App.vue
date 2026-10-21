@@ -5,6 +5,8 @@
       <span class="u">{{ bundle.meta.url }}</span>
       <el-button size="small" @click="copyRaw">复制原始 JSON</el-button>
     </header>
+    <el-alert v-if="bundle.storageTruncated" type="warning" :closable="false" class="mb"
+      :title="'结果超出存储配额，已保存截断副本（部分长表不全）· ' + new Date(bundle.storageTruncated.at).toLocaleString('zh-CN') + ' · ' + bundle.storageTruncated.reason" />
 
     <el-tabs v-model="tab" class="tabs">
       <el-tab-pane label="概览" name="overview">
@@ -78,40 +80,44 @@
           <ul class="div"><li v-for="(d, i) in compare.divergence" :key="i">{{ d }}</li></ul>
         </template>
 
-        <h3>路由并表（{{ routeMatrix.length }} 条）</h3>
-        <el-table v-if="routeMatrix.length" :data="routeMatrix" size="small" max-height="420">
+        <h3>路由并表（共 {{ routeMatrix.length }} 条）</h3>
+        <el-table v-if="routeMatrix.length" :data="paged('routeMatrix', routeMatrix)" size="small" max-height="420">
           <el-table-column prop="path" label="路径" />
           <el-table-column :label="'✔ ' + primary.label" width="150"><template #default="{ row }">{{ row.inPrimary ? '✔' : '' }}</template></el-table-column>
           <el-table-column :label="'✔ ' + auxiliary.label" width="150"><template #default="{ row }">{{ row.inAux ? '✔' : '' }}</template></el-table-column>
           <el-table-column label="仅一方" width="110"><template #default="{ row }">{{ row.inPrimary !== row.inAux ? '需核对' : '' }}</template></el-table-column>
         </el-table>
+        <Pager v-if="routeMatrix.length" v-model:page="pg.routeMatrix.page" v-model:size="pg.routeMatrix.size" :total="routeMatrix.length" />
         <div v-else class="empty">两路均未给出可展示的路由条目。</div>
       </el-tab-pane>
       <el-tab-pane label="API" name="api">
-        <h3>已调用接口（performance fetch/xhr）</h3>
-        <el-table :data="(bundle.api && bundle.api.liveApis) || []" size="small" max-height="220">
+        <h3>已调用接口（performance fetch/xhr，共 {{ ((bundle.api && bundle.api.liveApis) || []).length }} 条）</h3>
+        <el-table :data="paged('apiLive', bundle.api && bundle.api.liveApis)" size="small" max-height="420">
           <el-table-column prop="path" label="路径" />
           <el-table-column label="URL"><template #default="{ row }"><code>{{ row.url }}</code></template></el-table-column>
         </el-table>
-        <h3>静态提取端点（含是否被调用）</h3>
-        <el-table :data="(bundle.api && bundle.api.staticApis) || []" size="small" max-height="320">
+        <Pager v-model:page="pg.apiLive.page" v-model:size="pg.apiLive.size" :total="((bundle.api && bundle.api.liveApis) || []).length" />
+        <h3>静态提取端点（含是否被调用，共 {{ ((bundle.api && bundle.api.staticApis) || []).length }} 条）</h3>
+        <el-table :data="paged('apiStatic', bundle.api && bundle.api.staticApis)" size="small" max-height="420">
           <el-table-column prop="path" label="路径" />
           <el-table-column label="已调用" width="90"><template #default="{ row }">{{ row.called ? '是' : '否' }}</template></el-table-column>
           <el-table-column prop="hasParams" label="含参数" width="90" />
           <el-table-column label="来源"><template #default="{ row }">{{ (row.sources || []).join(', ') }}</template></el-table-column>
         </el-table>
+        <Pager v-model:page="pg.apiStatic.page" v-model:size="pg.apiStatic.size" :total="((bundle.api && bundle.api.staticApis) || []).length" />
       </el-tab-pane>
 
       <el-tab-pane label="安全" name="security">
         <template v-if="bundle.security">
           <el-alert :title="'整体风险：' + bundle.security.summary.overallRisk + ' · 敏感API ' + bundle.security.summary.sensitiveApiCount + ' · 未保护路由 ' + bundle.security.summary.unprotectedRoutes" type="warning" :closable="false" />
-          <h3>敏感接口线索</h3>
-          <el-table :data="bundle.security.sensitiveApis || []" size="small" max-height="260">
+          <h3>敏感接口线索（共 {{ (bundle.security.sensitiveApis || []).length }} 条，全部保留可翻页查看）</h3>
+          <el-table :data="paged('sensitive', bundle.security.sensitiveApis)" size="small" max-height="420">
             <el-table-column prop="category" label="类别" width="120" />
             <el-table-column prop="riskLevel" label="风险" width="90" />
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="source" label="来源" width="90" />
           </el-table>
+          <Pager v-model:page="pg.sensitive.page" v-model:size="pg.sensitive.size" :total="(bundle.security.sensitiveApis || []).length" />
           <h3>建议</h3>
           <ul><li v-for="(r, i) in bundle.security.recommendations || []" :key="i">{{ r }}</li></ul>
         </template>
@@ -172,12 +178,13 @@
         <h3>API 提取</h3>
         <template v-if="liveApi">
           <div class="tip">已调用 {{ liveApiStats.liveCount }} · 静态 {{ liveApiStats.staticCount }}（未调用 {{ liveApiStats.uncalledCount }}） · Sourcemap {{ liveApiStats.sourceMapCount }} · JS {{ liveApiStats.scriptCount }} 个 / 内联 {{ liveApiStats.inlineCount }} 段 / 失败 {{ liveApiStats.failedCount }} 个</div>
-          <el-table :data="(liveApi.staticApis || []).slice(0, 400)" size="small" max-height="320">
+          <el-table :data="paged('liveApiStatic', liveApi.staticApis)" size="small" max-height="420">
             <el-table-column prop="path" label="路径" />
             <el-table-column label="完整 URL"><template #default="{ row }"><code>{{ row.fullUrl || row.url || row.path }}</code></template></el-table-column>
             <el-table-column label="已调用" width="90"><template #default="{ row }">{{ row.called ? '是' : '否' }}</template></el-table-column>
             <el-table-column label="来源" width="180"><template #default="{ row }">{{ (row.sources || []).join(', ') }}</template></el-table-column>
           </el-table>
+          <Pager v-model:page="pg.liveApiStatic.page" v-model:size="pg.liveApiStatic.size" :total="(liveApi.staticApis || []).length" />
         </template>
         <div v-else class="empty">暂无 API 提取回传。</div>
 
@@ -221,9 +228,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
+import Pager from './Pager.vue'
 import { listPackage, toSearchItems } from '../core/dork-library'
 import { PLATFORMS, ASSET_MODES, buildAsset } from '../core/asset-search'
 const bundle = ref<any>(null)
@@ -253,6 +261,20 @@ const liveApiStats = computed(() => {
   }
 })
 const liveErrors = computed<Array<[string, string]>>(() => Object.entries((live.value.errors || {}) as Record<string, string>))
+
+// 长表分页：仅用于行数随站点规模增长的表，固定长度的表直接全量展示
+const pg = reactive<Record<string, { page: number; size: number }>>({
+  routeMatrix: { page: 1, size: 50 },
+  apiLive: { page: 1, size: 50 },
+  apiStatic: { page: 1, size: 50 },
+  sensitive: { page: 1, size: 50 },
+  liveApiStatic: { page: 1, size: 50 }
+})
+function paged(key: string, list: any[] | null | undefined): any[] {
+  const s = pg[key]
+  const from = (s.page - 1) * s.size
+  return (list || []).slice(from, from + s.size)
+}
 
 // 双源对比：主源 King detector（live.routerAnalysis），辅源 routerProbe（bundle.routes）
 const compare = computed(() => buildProbeCompare(live.value.routerAnalysis, bundle.value && bundle.value.routes))
@@ -300,7 +322,7 @@ const dorkEngine = ref('google')
 const dorkItems = computed(() => {
   const host = bundle.value && bundle.value.meta && bundle.value.meta.host
   if (!host) return []
-  return toSearchItems(listPackage('general'), host, dorkEngine.value).slice(0, 60)
+  return toSearchItems(listPackage('general'), host, dorkEngine.value)
 })
 const assetRows = computed(() => {
   const host = bundle.value && bundle.value.meta && bundle.value.meta.host
