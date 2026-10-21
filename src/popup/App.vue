@@ -14,19 +14,6 @@
       <el-button :disabled="!store.inScope" :loading="store.busy" @click="onCollect">开始采集</el-button>
       <el-button :disabled="!store.inScope || !store.lastBundle || !store.settings.activeProbe" :loading="store.busy" @click="onProbes">主动探测</el-button>
       <el-button :disabled="!store.lastBundle" @click="store.openResult()">查看结果</el-button>
-      <el-dropdown :disabled="!store.lastBundle" trigger="click" @command="onExport">
-        <el-button :disabled="!store.lastBundle">导出<el-icon><ArrowDown /></el-icon></el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="json">JSON</el-dropdown-item>
-            <el-dropdown-item command="csv">CSV</el-dropdown-item>
-            <el-dropdown-item command="md">Markdown 报告</el-dropdown-item>
-            <el-dropdown-item command="src">SRC 提交草稿</el-dropdown-item>
-            <el-dropdown-item command="html">HTML 报告</el-dropdown-item>
-            <el-dropdown-item command="txt">端点 TXT</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
     </el-space>
 
     <p v-if="!store.settings.activeProbe" class="tip">主动探测已在设置页关闭：探测按钮与常驻接管脚本均未启用。</p>
@@ -39,9 +26,8 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { Setting, ArrowDown } from '@element-plus/icons-vue'
+import { Setting } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
-import { exportBundle } from '../core/exporter'
 
 const store = useAppStore()
 
@@ -60,9 +46,6 @@ async function onCollect(): Promise<void> {
 }
 async function onProbes(): Promise<void> {
   await store.probes()
-}
-function onExport(fmt: string): void {
-  if (store.lastBundle) exportBundle(store.lastBundle, fmt)
 }
 </script>
 

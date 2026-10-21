@@ -3,6 +3,19 @@
     <header class="bar">
       <h1>ReconX 采集结果</h1>
       <span class="u">{{ bundle.meta.url }}</span>
+      <el-dropdown trigger="click" @command="onExport">
+        <el-button size="small">导出<el-icon><ArrowDown /></el-icon></el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="json">JSON</el-dropdown-item>
+            <el-dropdown-item command="csv">CSV</el-dropdown-item>
+            <el-dropdown-item command="md">Markdown 报告</el-dropdown-item>
+            <el-dropdown-item command="src">SRC 提交草稿</el-dropdown-item>
+            <el-dropdown-item command="html">HTML 报告</el-dropdown-item>
+            <el-dropdown-item command="txt">端点 TXT</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <el-button size="small" @click="copyRaw">复制原始 JSON</el-button>
     </header>
     <el-alert v-if="bundle.storageTruncated" type="warning" :closable="false" class="mb"
@@ -255,6 +268,8 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
+import { ArrowDown } from '@element-plus/icons-vue'
+import { exportBundle } from '../core/exporter'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
 import Pager from './Pager.vue'
@@ -347,6 +362,10 @@ async function copyRaw(): Promise<void> {
 }
 const dorkEngine = ref('google')
 const dorkTab = ref('queries')
+
+function onExport(fmt: string): void {
+  if (bundle.value) exportBundle(bundle.value, fmt)
+}
 const dorkItems = computed(() => {
   const host = assetDomain.value.trim() || (bundle.value && bundle.value.meta && bundle.value.meta.host)
   if (!host) return []
