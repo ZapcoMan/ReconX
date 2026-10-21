@@ -1,6 +1,6 @@
 {
   "name": "reconx",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "面向已授权目标的前端资产与路由侦察工作台（Vue 3 + TypeScript + Vite + Element Plus，Chrome MV3）：被动指纹与敏感信息采集、主动探测与客户端路由接管核验、Dork 与资产测绘查询生成",
   "type": "module",
