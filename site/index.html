@@ -24,7 +24,6 @@
     <a href="#features">功能</a>
     <a href="#dual-source">双源探测</a>
     <a href="#install">安装</a>
-    <a href="#limits">边界</a>
     <a href="#credits">来源</a>
   </nav>
   <div class="head-actions">
@@ -126,22 +125,7 @@
       <li><strong>探测（可选）</strong>点「主动探测」执行敏感路径与路由可达性核验；判定为 Vue/React 时附带前端路由接管。</li>
     </ol>
     <p class="sub">自行构建：<code>npm install &amp;&amp; npm run build</code>，产物在 <code>dist/</code>。</p>
-    <p class="sub warn-text">注意：主机一旦加入允许域，接管脚本即随该站每次页面加载自动生效，不再需要点击「主动探测」。从设置页移除允许域目前不会立即注销这份注册——要彻底停止，请在设置页「撤销全部主机权限」并重载扩展。</p>
-  </section>
-
-  <section id="limits" class="block">
-    <h2>边界与已知限制</h2>
-    <p>我们不把没验证过的东西写成能力。以下摘自仓库文档，供你评估适用性：</p>
-    <ul class="crosses">
-      <li>接管仅客户端：能直达前端路由不等于能拿到数据，服务端鉴权不受影响。</li>
-      <li>「未受保护路由」判定只看路由 <code>meta</code> 的键名，不看值也不看全局守卫，极易虚报；也可能漏报。</li>
-      <li>敏感路径命中判定基于关键词子串且不校验 Content-Type；SPA 的历史回退路由对任意路径返回 200，会被误判为「存在」。</li>
-      <li>指纹匹配首个命中即返回，版本抽取存在张冠李戴的可能。</li>
-      <li>React 侧的路由静态枚举依赖框架内部结构，版本差异较大，拿不到时会回落页面锚点并标注来源。</li>
-      <li>多数密钥命中做了掩码，但 JWT 解码载荷与完整 URL / 参数会原样进入结果与导出文件，请谨慎分享导出内容。</li>
-      <li>数据仅保存在本机 <code>chrome.storage.local</code>，无上传、无追踪。</li>
-    </ul>
-    <p class="sub">完整清单见仓库 <code>docs/已知限制与运行验证.md</code>。</p>
+    <p class="sub warn-text">注意：主机一旦加入允许域，接管脚本即随该站每次页面加载自动生效，不再需要点击「主动探测」；不再需要时在设置页移除该主机并撤销主机权限。</p>
   </section>
 
   <section id="credits" class="block">

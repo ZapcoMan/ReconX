@@ -155,14 +155,13 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
 .tag.warn { color: var(--danger); background: rgba(242, 105, 95, .12); }
 
 /* 列表 */
-ul.ticks, ul.crosses { list-style: none; padding: 0; margin: 0; }
-ul.ticks li, ul.crosses li {
+ul.ticks { list-style: none; padding: 0; margin: 0; }
+ul.ticks li {
   position: relative; padding-left: 26px; margin-bottom: 9px;
   font-size: 15px; color: var(--text);
 }
 ul.ticks li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
-ul.crosses li::before { content: "!"; position: absolute; left: 4px; color: var(--warn); font-weight: 700; }
-ul.ticks li, ul.crosses li { color: var(--muted); }
+ul.ticks li { color: var(--muted); }
 ul.links { list-style: none; padding: 0; margin: 0 0 18px; }
 ul.links li { padding-left: 18px; position: relative; margin-bottom: 7px; color: var(--muted); }
 ul.links li::before { content: "→"; position: absolute; left: 0; color: var(--accent); }
