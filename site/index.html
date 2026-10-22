@@ -54,7 +54,7 @@
     接管<strong>只发生在客户端</strong>，服务端的 401/403 与数据级鉴权照样拦得住。
     所有命中都是<strong>启发式线索</strong>，已对常见误报做降噪，但仍须人工确认后再据此提交漏洞。
     命中与导出<strong>按原文留存</strong>（含密钥、Cookie 与响应头原值），采集历史也留在本机且不外传，但导出文件请谨慎分享；不需要时用设置页「采集历史」逐条删除或清空。
-    仅在你拥有或已获书面授权的资产上使用。
+    自 1.0.0 起工具<strong>不再用允许域限制技术作用范围</strong>，是否合规完全由使用者负责——请仅在你拥有或已获书面授权的资产上使用。
   </section>
 
   <section id="capabilities" class="block">
@@ -109,7 +109,7 @@
         <ul class="ticks">
           <li>框架 / CMS / CDN / 边缘防护与版本线索识别</li>
           <li>安全头缺失、CSP 指令、CORS、<code>Set-Cookie</code>（HttpOnly / Secure / SameSite）风险</li>
-          <li>响应头只在允许域内缓存、约 30 分钟自动过期，不对范围外站点静默收集</li>
+          <li>响应头缓存约 30 分钟自动过期、主机数设上限，避免无限增长与陈旧头误导审计</li>
           <li>云密钥、Token、私钥、JWT、内网与元数据地址、Sourcemap、Git 痕迹扫描，命中一律原文留存（不掩码，导出即取证材料）；密钥正则与敏感路径探测均可追加自定义条目</li>
           <li>DOM 链接、表单与隐藏字段、iframe、运行时资源、内联 <code>/api</code> 端点，按主机与参数归一去重</li>
           <li>URL 规范化：跳转还原、去跟踪参数、域名 / 通配 / 正则黑名单（设置页每行一条自定）</li>
@@ -136,12 +136,12 @@
     <ol class="steps">
       <li><strong>下载</strong>从 GitHub Release 下载扩展包并解压（解压后的目录即 <code>dist/</code>）。</li>
       <li><strong>加载</strong>打开 <code>chrome://extensions</code>，开启右上角「开发者模式」，点「加载已解压的扩展程序」选择该目录。需 Chrome 111+。</li>
-      <li><strong>授权</strong>打开目标站点，点扩展图标 →「授权并加入范围」，该主机会加入允许域白名单并申请主机权限。</li>
-      <li><strong>采集</strong>点「开始采集」，随后「查看结果」分栏浏览，或选择导出格式。</li>
-      <li><strong>探测（可选）</strong>点「主动探测」执行敏感路径与路由可达性核验；判定为 Vue/React 时附带前端路由接管。</li>
+      <li><strong>采集</strong>打开目标站点，点扩展图标 →「开始采集」（1.0.0 起不再要求逐站点授权，是否使用由你自行负责）。</li>
+      <li><strong>查看</strong>点「查看结果」分栏浏览，或选择导出格式。</li>
+      <li><strong>探测（可选）</strong>先在设置页开启「启用主动探测」，再点「主动探测」执行敏感路径与路由可达性核验；判定为 Vue/React 时附带前端路由接管。</li>
     </ol>
     <p class="sub">自行构建：<code>npm install &amp;&amp; npm run build</code>，产物在 <code>dist/</code>。</p>
-    <p class="sub warn-text">注意：主机一旦加入允许域，接管脚本即随该站每次页面加载自动生效，不再需要点击「主动探测」；不再需要时在设置页移除该主机并撤销主机权限。</p>
+    <p class="sub warn-text">注意：开启「启用主动探测」后，接管脚本会随任意站点每次页面加载自动生效，不再需要逐次点击「主动探测」；不需要时关闭该总开关即停止注入。工具不再用允许域限制作用范围，请仅对你拥有或已获书面授权的资产使用。</p>
   </section>
 
   <section id="credits" class="block">
