@@ -466,15 +466,21 @@ async function appendHistory(bundle: any): Promise<BundleMeta[]> {
   for (let attempt = 0; attempt <= 5; attempt++) {
     try {
       await chrome.storage.local.set({ [bundleKey(meta.id)]: bundle, [HISTORY_INDEX_KEY]: current })
-      if (queue.length) await chrome.storage.local.remove(queue.map((m) => bundleKey(m.id)))
-      return current
     } catch (e: any) {
+      // 仅"写不下"才按配额处理：丢最旧重试
       if (!current.length) break
       const oldest = current[current.length - 1]
       current = current.slice(0, -1)
       queue.push(oldest)
       console.warn('[ReconX] history over quota, dropped oldest:', oldest.id)
+      continue
     }
+    // 写成功后再尽力删除被丢条目的全量键；remove 失败不回滚、不误判为配额
+    if (queue.length) {
+      try { await chrome.storage.local.remove(queue.map((m) => bundleKey(m.id))) }
+      catch (e: any) { console.warn('[ReconX] 删除被丢历史全量键失败（不影响本次写入）:', e && e.message) }
+    }
+    return current
   }
   try { await writeIndex(current) } catch { /* 索引也写不下就到此为止 */ }
   console.warn('[ReconX] 未能写入采集历史条目，lastBundle 仍可用')
@@ -492,8 +498,13 @@ async function persistBundle(bundle: any): Promise<void> {
   } catch (e: any) {
     // 全量写失败（多为配额）时退回截断副本，绝不让整次采集白做
     stored = shrinkForStorage(bundle, String((e && e.message) || e))
-    await chrome.storage.local.set({ lastBundle: stored })
-    console.warn('[ReconX] bundle over quota, saved truncated copy:', e)
+    try {
+      await chrome.storage.local.set({ lastBundle: stored })
+      console.warn('[ReconX] bundle over quota, saved truncated copy:', e)
+    } catch (e2: any) {
+      // 截断副本仍超配额：记录后继续，绝不向外抛——否则调用方 sendResponse 永不触发、busyAction 卡死
+      console.warn('[ReconX] 截断副本仍超配额，本次未能落盘 lastBundle:', e2 && e2.message)
+    }
   }
   await appendHistory(stored)
 }
