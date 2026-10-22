@@ -1,16 +1,20 @@
 // URL 规范化 + 敏感 URL 三级分类（自 lib/url-classify.js 迁移为 ES 模块）
 // normalize：还原常见跳转包装、去跟踪参数与 hash；classify：按特征分 critical/warn/info。
-export const TRACKING_PARAMS: string[] = [
+// URL 解析统一走 url-utils，非法输入不抛错。
+import { parseHttpUrl, safeHostname } from './url-utils'
+
+// as const：元组字面量类型，遍历时保留完整字符串信息
+export const TRACKING_PARAMS = [
   'ved', 'usg', 'ei', 'sa', 'cd', 'rct', 'cad', 'uact', 'aqs', 'sourceid',
   'sxsrf', 'gs_lcp', 'oq', 'gs_lcrp', 'sca_esv', 'sclient',
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'spm'
-]
+] as const
 
-export const ENGINE_DOMAINS: string[] = [
+export const ENGINE_DOMAINS = [
   'google.com', 'gstatic.com', 'googleapis.com', 'googleusercontent.com',
   'baidu.com', 'bdstatic.com', 'bdimg.com',
   'bing.com', 'bingapis.com', 'microsoft.com', 'msn.com', 'w3.org', 'schema.org'
-]
+] as const
 
 function safeDecode(v: string): string {
   try {
@@ -25,21 +29,14 @@ function hostMatches(host: string, domain: string): boolean {
 
 export function normalize(raw: string): string {
   if (!raw) return ''
-  let u: URL
-  try {
-    u = new URL(raw)
-  } catch {
-    return ''
-  }
+  let u = parseHttpUrl(raw)
+  if (!u) return ''
   const host = u.hostname.toLowerCase()
   if (/google\.[a-z.]+$/.test(host) && u.pathname === '/url') {
     const t = u.searchParams.get('q') || u.searchParams.get('url')
     if (t && /^https?:\/\//i.test(t)) {
-      try {
-        u = new URL(t)
-      } catch {
-        return ''
-      }
+      u = parseHttpUrl(t)
+      if (!u) return ''
     }
   }
   if (hostMatches(u.hostname.toLowerCase(), 'bing.com') && u.pathname.includes('/ck/a')) {
@@ -48,7 +45,9 @@ export function normalize(raw: string): string {
       try {
         let d = atob(enc.replace(/^a1/, ''))
         if (!/^https?:\/\//i.test(d)) d = 'https://' + d
-        u = new URL(d)
+        const next = parseHttpUrl(d)
+        if (!next) return ''
+        u = next
       } catch {
         return ''
       }
@@ -56,25 +55,17 @@ export function normalize(raw: string): string {
   }
   const r = u.searchParams.get('url') || u.searchParams.get('target') || u.searchParams.get('redirectUrl')
   if (r && /^https?:\/\//i.test(r)) {
-    try {
-      u = new URL(r)
-    } catch {
-      /* ignore */
-    }
+    u = parseHttpUrl(r) ?? u
   }
-  TRACKING_PARAMS.forEach((p) => u.searchParams.delete(p))
+  TRACKING_PARAMS.forEach((p) => u!.searchParams.delete(p))
   u.hash = ''
   return u.toString()
 }
 
 export function isEngineUrl(url: string): boolean {
-  let host: string
-  try {
-    host = new URL(url).hostname.toLowerCase()
-  } catch {
-    return true
-  }
-  if (url.indexOf('chrome-extension://') === 0) return true
+  const host = safeHostname(url)
+  if (!host) return true
+  if (url.startsWith('chrome-extension://')) return true
   return ENGINE_DOMAINS.some((d) => hostMatches(host, d))
 }
 
@@ -105,24 +96,21 @@ export function compileBlacklist(list: string[] | null | undefined): CompiledBla
 }
 
 export function matchBlacklist(url: string, compiled: CompiledBlacklist): boolean {
-  let host: string
-  try {
-    host = new URL(url).hostname.toLowerCase()
-  } catch {
-    return false
-  }
+  const host = safeHostname(url)
+  if (!host) return false
   return compiled.domains.some((d) => hostMatches(host, d.domain)) || compiled.regex.some((re) => re.test(url))
 }
 
 export interface SensitiveRule {
   id: string
   label: string
-  level: string
+  /** 分类等级：字面量联合，配合 satisfies 索引时编译期可验 */
+  level: 'critical' | 'warn' | 'info'
   re: RegExp
   decode?: boolean
 }
 
-export const SENSITIVE_RULES: SensitiveRule[] = [
+export const SENSITIVE_RULES = [
   { id: 'db', label: '数据库', level: 'critical', re: /\.(sql|db|mdb|dump|sqlite)(\?|$|&)/i },
   { id: 'backup', label: '备份', level: 'critical', re: /(\.bak|\.old|\.zip|\.rar|\.7z|backup|www\.zip|web\.zip|site\.zip)(\?|$|&|\/)/i },
   { id: 'config', label: '配置', level: 'critical', re: /(\.env|config\.php|web\.config|application\.ya?ml|\.ini|\.properties)(\?|$|&)/i },
@@ -133,9 +121,12 @@ export const SENSITIVE_RULES: SensitiveRule[] = [
   { id: 'student', label: '学生数据', level: 'info', re: /(学生|名单|花名册|学籍|录取|成绩|xueji|luqu|chengji)/i, decode: true },
   { id: 'idcard', label: '证件信息', level: 'info', re: /(身份证|证件|idcard|id_card|sfz)/i, decode: true },
   { id: 'doc', label: '文档', level: 'info', re: /\.(xls|xlsx|doc|docx|pdf|csv)(\?|$|&)/i }
-]
+] satisfies SensitiveRule[]
 
-const WEIGHT: Record<string, number> = { critical: 0, warn: 1, info: 2 }
+const WEIGHT = { critical: 0, warn: 1, info: 2 } satisfies Record<SensitiveRule['level'], number>
+
+/** 安全取分类权重：字面量键表用 keyof 索引，未知等级排末位 */
+const weight = (level: string | null): number => (level && level in WEIGHT ? WEIGHT[level as SensitiveRule['level']] : 3)
 
 export interface ClassifyResult {
   labels: string[]
@@ -154,7 +145,7 @@ export function classify(url: string): ClassifyResult {
     }
   }
   if (!hits.length) return { labels: [], level: null }
-  hits.sort((a, b) => WEIGHT[a.level] - WEIGHT[b.level])
+  hits.sort((a, b) => weight(a.level) - weight(b.level))
   return { labels: hits.map((h) => h.label), level: hits[0].level }
 }
 
@@ -164,5 +155,5 @@ export function rankItems<T extends { url: string }>(items: T[]): Array<T & Clas
       const c = classify(it.url)
       return Object.assign({}, it, { labels: c.labels, level: c.level })
     })
-    .sort((a, b) => (a.level ? WEIGHT[a.level] : 3) - (b.level ? WEIGHT[b.level] : 3))
+    .sort((a, b) => weight(a.level) - weight(b.level))
 }

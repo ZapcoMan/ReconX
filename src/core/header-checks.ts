@@ -1,5 +1,5 @@
 // 安全响应头 / Cookie / CORS / CSP 配置分析（自 lib/header-checks.js 迁移为 ES 模块）
-import type { HeaderPair } from '../types'
+import type { HeaderPair, Severity } from '../types'
 
 export interface SecurityHeaderSpec {
   header: string
@@ -9,18 +9,19 @@ export interface SecurityHeaderSpec {
   alt?: string
 }
 
-export const SECURITY_HEADERS: SecurityHeaderSpec[] = [
+export const SECURITY_HEADERS = [
   { header: 'Content-Security-Policy', httpsOnly: false, ifMissing: 'medium', advice: '缺少 CSP，难以约束脚本注入面' },
   { header: 'Strict-Transport-Security', httpsOnly: true, ifMissing: 'high', advice: 'HTTPS 站点缺少 HSTS，存在降级/中间人风险' },
   { header: 'X-Frame-Options', httpsOnly: false, ifMissing: 'low', advice: '缺少点击劫持防护（也可用 CSP frame-ancestors）', alt: 'Content-Security-Policy' },
   { header: 'X-Content-Type-Options', httpsOnly: false, ifMissing: 'low', advice: '建议 nosniff，避免 MIME 嗅探' },
   { header: 'Referrer-Policy', httpsOnly: false, ifMissing: 'low', advice: '建议显式 Referrer-Policy，控制 Referer 泄露' },
   { header: 'Permissions-Policy', httpsOnly: false, ifMissing: 'info', advice: '可选：用 Permissions-Policy 收敛摄像头/麦克风等能力' }
-]
+] satisfies SecurityHeaderSpec[]
 
 export interface ParsedCookie {
   name: string
-  valueMasked: string
+  /** Cookie 值明文（不再掩码，与 raw 头一致，仅供已授权取证使用） */
+  value: string
   path: string | null
   domain: string | null
   secure: boolean
@@ -30,13 +31,6 @@ export interface ParsedCookie {
   expires: string | null
   sessionish?: boolean
   flags?: string[]
-}
-
-export function mask(value: string | number | boolean | null): string {
-  const v = String(value || '')
-  if (!v) return ''
-  if (v.length <= 8) return '*'.repeat(6)
-  return v.slice(0, 3) + '…' + v.slice(-3)
 }
 
 export function parseSetCookie(raw: string): ParsedCookie {
@@ -55,11 +49,12 @@ export function parseSetCookie(raw: string): ParsedCookie {
   }
   return {
     name,
-    valueMasked: mask(value),
+    value,
     path: (attrs.path as string) || null,
     domain: typeof attrs.domain === 'string' ? attrs.domain : null,
-    secure: 'secure' in attrs,
-    httponly: 'httponly' in attrs,
+    // Object.hasOwn：只认 Cookie 属性表自身键，不走原型链（'secure' in obj 会误命中 Object.prototype 同名成员的风险虽低但语义不纯）
+    secure: Object.hasOwn(attrs, 'secure'),
+    httponly: Object.hasOwn(attrs, 'httponly'),
     samesite: typeof attrs.samesite === 'string' ? attrs.samesite.toLowerCase() : null,
     maxage: typeof attrs['max-age'] === 'string' ? attrs['max-age'] : null,
     expires: typeof attrs.expires === 'string' ? attrs.expires : null
@@ -116,7 +111,7 @@ export function analyze(headerPairs: HeaderPair[] | null | undefined, isHttps: b
   const lower: Record<string, string[]> = {}
   for (const hp of headerPairs) {
     const n = String(hp.name || '').toLowerCase()
-    ;(lower[n] = lower[n] || []).push(hp.value)
+    ;(lower[n] ??= []).push(hp.value)
   }
   const first = (n: string): string | null => (lower[n] && lower[n][0]) || null
 
@@ -209,11 +204,12 @@ export function analyze(headerPairs: HeaderPair[] | null | undefined, isHttps: b
   }
 
   const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-  const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
-  missing.forEach((m) => counts[m.level]++)
-  advisories.forEach((a) => counts[a.level]++)
-  advisories.sort((a, b) => order[a.level] - order[b.level])
-  missing.sort((a, b) => order[a.level] - order[b.level])
+  const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } satisfies Partial<Record<Severity, number>>
+  missing.forEach((m) => { counts[m.level] = (counts[m.level] ?? 0) + 1 })
+  advisories.forEach((a) => { counts[a.level] = (counts[a.level] ?? 0) + 1 })
+  const sev = (s: string): number => (s in order ? order[s as keyof typeof order] : 9)
+  advisories.sort((a, b) => sev(a.level) - sev(b.level))
+  missing.sort((a, b) => sev(a.level) - sev(b.level))
 
   return {
     raw: headerPairs.map((hp) => ({ name: hp.name, value: hp.value })),

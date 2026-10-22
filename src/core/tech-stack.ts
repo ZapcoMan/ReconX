@@ -1,6 +1,7 @@
 // Wappalyzer 式技术栈合并探测（自 lib/tech-stack.js 迁移为 ES 模块）
 // 交叉多路信号输出带置信度技术栈，并判定是否 Vue/React SPA（决定是否启用前端路由探测）。
 import * as Fingerprints from './fingerprints'
+import * as UrlUtils from './url-utils'
 import type { RouterProbeResult, TechItem, TechStackResult } from '../types'
 
 function ver(s: string | null | undefined): string | null {
@@ -40,8 +41,8 @@ export function detect(ctx?: TechStackContext): TechStackResult {
   })
   if (ctx.metaGenerator) for (const g of Fingerprints.GENERATOR) if (g.re.test(ctx.metaGenerator)) add(g.name, 'cms', ver(ctx.metaGenerator), 'generator: ' + ctx.metaGenerator, 80)
   ;(ctx.resourceUrls || []).forEach((u: string) => {
-    const id = Fingerprints.identifyFromUrl(u)
-    if (id) add(id.name, 'library', id.version, 'resource: ' + String(u).split('?')[0].split('/').slice(-1)[0], 60)
+    // 单条资源 URL 可能命中多个组件（如 webpack 合并包），identifyFromUrl 现在返回全部命中
+    for (const id of Fingerprints.identifyFromUrl(u)) add(id.name, 'library', id.version, 'resource: ' + UrlUtils.filenameOf(u), 60)
   })
   const html = ctx.htmlEvidence || ''
   for (const p of Fingerprints.HTML_PATTERNS) if (p.re.test(html)) add(p.name, 'framework', null, 'html', 55)

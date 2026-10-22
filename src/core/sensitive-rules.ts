@@ -1,8 +1,9 @@
 // JS / 文本 敏感信息扫描规则库（自 lib/sensitive-rules.js 迁移为 ES 模块）
-// 输出对命中值默认掩码，避免完整密钥写入采集结果或导出报告。
+// 命中值明文输出（不再掩码），与 header-checks 的原始头值保持一致，方便取证与复核；导出文件含真实凭据，仅在已授权范围内使用。
 import type { Severity } from '../types'
 
-export const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
+// satisfies：编译期校验键名都属于 Severity，同时保留字面量类型供 keyof 推导
+export const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } satisfies Partial<Record<Severity, number>>
 
 export interface SensitivePattern {
   id: string
@@ -12,7 +13,7 @@ export interface SensitivePattern {
   desc: string
 }
 
-export const PATTERNS: SensitivePattern[] = [
+export const PATTERNS = [
   { id: 'aws-akid', name: 'AWS Access Key ID', severity: 'high', re: /\b(?:AKIA|ASIA|AIDA|ANPA|ANVA|AROA|AIP|ABIA|ACCA)[0-9A-Z]{16}\b/g, desc: '疑似 AWS 访问密钥 ID' },
   { id: 'aws-secret', name: 'AWS Secret Access Key', severity: 'high', re: /aws.{0,40}(secret|sk).{0,20}['"][0-9A-Za-z/+=]{40}['"]/gi, desc: '疑似 AWS Secret Key' },
   { id: 'gcp-apikey', name: 'Google API Key', severity: 'high', re: /\bAIza[0-9A-Za-z_\-]{35}\b/g, desc: 'Google Cloud API Key' },
@@ -46,7 +47,7 @@ export const PATTERNS: SensitivePattern[] = [
   { id: 'git-ref', name: 'Git 仓库痕迹', severity: 'low', re: /(git@[\w.-]+:[\w./-]+|\.git\/(?:HEAD|config))/gi, desc: '源码里残留 Git 仓库地址/路径' },
   { id: 'pii-email', name: '邮箱（潜在 PII）', severity: 'info', re: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g, desc: '出现邮箱，可能是开发者/用户 PII' },
   { id: 'phone-cn', name: '手机号（潜在 PII）', severity: 'info', re: /\b1[3-9]\d{9}\b/g, desc: '出现疑似中国大陆手机号' }
-]
+] satisfies SensitivePattern[]
 
 export interface PathProbe {
   path: string
@@ -56,7 +57,7 @@ export interface PathProbe {
   desc: string
 }
 
-export const PATH_PROBES: PathProbe[] = [
+export const PATH_PROBES = [
   { path: '/.git/HEAD', method: 'GET', severity: 'high', keywords: ['ref:'], desc: 'Git 仓库可读取（源码泄露）' },
   { path: '/.git/config', method: 'GET', severity: 'high', keywords: ['[core]', '[remote'], desc: 'Git config 暴露' },
   { path: '/.env', method: 'GET', severity: 'high', keywords: ['=', 'app_key', 'db_', 'secret'], desc: '.env 配置泄露' },
@@ -76,16 +77,7 @@ export const PATH_PROBES: PathProbe[] = [
   { path: '/composer.json', method: 'GET', severity: 'low', keywords: ['require', 'name'], desc: '依赖清单泄露（技术栈+版本线索）' },
   { path: '/package.json', method: 'GET', severity: 'low', keywords: ['dependencies', 'name'], desc: '依赖清单泄露（技术栈+版本线索）' },
   { path: '/.hidden', method: 'GET', severity: 'info', keywords: ['admin', 'api', 'staging', 'internal', 'backup', 'test', 'debug'], desc: '隐藏管理员 API（HIDDEN-MGMT 模式）' }
-]
-
-export function mask(value: string): string {
-  const v = String(value)
-  if (v.length <= 8) return '*'.repeat(Math.max(3, v.length))
-  const head = v.slice(0, 3)
-  const tail = v.slice(-3)
-  const mid = '*'.repeat(Math.min(10, v.length - 6))
-  return head + mid + tail
-}
+] satisfies PathProbe[]
 
 export function decodeJwt(token: string): Record<string, any> {
   try {
@@ -110,7 +102,8 @@ export function decodeJwt(token: string): Record<string, any> {
 }
 
 export interface FindingSample {
-  masked: string
+  /** 命中原文（明文，不再掩码） */
+  value: string
   at: number
 }
 export interface Finding {
@@ -140,7 +133,7 @@ export function scanText(text: string, url?: string, opts?: { perRuleCap?: numbe
         re.lastIndex++
         continue
       }
-      samples.push({ masked: mask(m[1] || m[0]), at: m.index })
+      samples.push({ value: m[1] || m[0], at: m.index })
       if (samples.length >= perRuleCap) break
     }
     if (samples.length) {
@@ -156,6 +149,9 @@ export function scanText(text: string, url?: string, opts?: { perRuleCap?: numbe
   return findings
 }
 
+// 风险等级中文标签：satisfies 保证键名合法，查不到时回退原串
+const RISK_CN = { critical: '严重', high: '高危', medium: '中危', low: '低危', info: '提示' } satisfies Partial<Record<Severity, string>>
+
 export function riskLabel(sevLevel: string): string {
-  return ({ critical: '严重', high: '高危', medium: '中危', low: '低危', info: '提示' } as Record<string, string>)[sevLevel] || sevLevel
+  return RISK_CN[sevLevel as keyof typeof RISK_CN] ?? sevLevel
 }

@@ -1,8 +1,10 @@
 // 只读三能力组装（自 lib/collect-extras.js 迁移为 ES 模块）：routes/api/security/classified/riskNote
+// URL 解析统一走 url-utils（非法输入不抛错，语义与原 try/catch 一致）。
 import { buildLiveApis, finalize } from './api-extract'
 import { buildRouteUrlList } from './route-urls'
 import { performSecurityAudit } from './security-audit'
 import { rankItems } from './url-classify'
+import * as UrlUtils from './url-utils'
 import type { RouterProbeResult } from '../types'
 export interface ComputeExtrasContext {
   tab: { url: string }
@@ -16,17 +18,18 @@ export function computeExtras(ctx: ComputeExtrasContext): Record<string, any> {
   const routerInfo = (ctx.routerInfo || {}) as Record<string, any>
   const links = ctx.links || { endpoints: [] }
   let origin = ''
-  try { origin = new URL(tab.url).origin } catch { /* */ }
+  origin = UrlUtils.originOf(tab.url)
   const liveApis = buildLiveApis(routerInfo.perf || [])
-  const livePathnames = liveApis.map((a) => { try { return new URL(a.url).pathname } catch { return a.path } })
+  const livePathnames = liveApis.map((a) => UrlUtils.parseHttpUrl(a.url)?.pathname ?? a.path)
   const staticApis = finalize((js.endpoints || {}) as Record<string, any>, livePathnames, origin)
-  const sourceMaps = (js.sourcemaps || []).map((m) => { let mu = m.map; try { mu = new URL(m.map, m.from).href } catch { /* */ } return { scriptUrl: m.from, mapUrl: mu } })
+  const sourceMaps = (js.sourcemaps || []).map((m) => ({ scriptUrl: m.from, mapUrl: UrlUtils.toAbsolute(m.map, m.from)?.href ?? m.map }))
   let routesList: Array<Record<string, any>> = routerInfo.allRoutes && routerInfo.allRoutes.length ? routerInfo.allRoutes : []
   let anchorFallback = false
   if (!routesList.length) {
     const sp: Record<string, number> = {}
     ;(routerInfo.anchorLinks || []).forEach((href: string) => {
-      try { const u = new URL(href); if (u.hostname === host && !sp[u.pathname]) { sp[u.pathname] = 1; routesList.push({ path: u.pathname, name: '', meta: {} }) } } catch { /* */ }
+      const u = UrlUtils.parseHttpUrl(href)
+      if (u && u.hostname === host && !sp[u.pathname]) { sp[u.pathname] = 1; routesList.push({ path: u.pathname, name: '', meta: {} }) }
     })
     anchorFallback = routesList.length > 0
   }

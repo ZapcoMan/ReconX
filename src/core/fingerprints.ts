@@ -7,7 +7,8 @@ export function versionFrom(str: string | null | undefined): string | null {
   return m ? m[1] : null
 }
 
-export const SERVER_TECH: PatternRule[] = [
+// 规则表统一用 satisfies 做编译期形状校验：写错字段名/漏字段当场报错，同时保留字面量推断类型。
+export const SERVER_TECH = [
   { re: /nginx/i, name: 'nginx' },
   { re: /openresty/i, name: 'OpenResty' },
   { re: /tengine/i, name: 'Tengine (阿里)' },
@@ -20,19 +21,21 @@ export const SERVER_TECH: PatternRule[] = [
   { re: /jetty/i, name: 'Eclipse Jetty' },
   { re: /Tomcat|Coyote/i, name: 'Apache Tomcat' },
   { re: /Varnish/i, name: 'Varnish Cache' },
-  { re: /ATS|Apache Traffic Server/i, name: 'Apache Traffic Server' },
-  { re: /SAP NetWeaver|SAP/i, name: 'SAP NetWeaver' },
-  { re: /Zen|Zen\+\+/i, name: 'Zen load balancer' }
-]
+  // \b 词边界：避免 Stats/Formats 等含 "ats" 子串的值误报 Apache Traffic Server
+  { re: /\bATS\b|Apache Traffic Server/i, name: 'Apache Traffic Server' },
+  { re: /\bSAP\b|SAP NetWeaver/i, name: 'SAP NetWeaver' },
+  // 排除 Zend（PHP 的 Zend Server）：\bZen(\+\+)?\b 不会命中后接 d 的 Zend
+  { re: /\bZen(\+\+)?\b/i, name: 'Zen load balancer' }
+] satisfies PatternRule[]
 
-export const POWERED_BY: PatternRule[] = [
+export const POWERED_BY = [
   { re: /PHP/i, name: 'PHP' },
   { re: /ASP\.NET/i, name: 'ASP.NET' },
   { re: /Express/i, name: 'Express (Node.js)' },
   { re: / Servlet/i, name: 'Java Servlet' }
-]
+] satisfies PatternRule[]
 
-export const GENERATOR: PatternRule[] = [
+export const GENERATOR = [
   { re: /WordPress/i, name: 'WordPress' },
   { re: /Joomla/i, name: 'Joomla' },
   { re: /Drupal/i, name: 'Drupal' },
@@ -46,55 +49,60 @@ export const GENERATOR: PatternRule[] = [
   { re: /Docusaurus/i, name: 'Docusaurus' },
   { re: /Shopify/i, name: 'Shopify' },
   { re: /Movable ?Type|MT/i, name: 'Movable Type' }
-]
+] satisfies PatternRule[]
 
-export const COOKIE_TECH: PatternRule[] = [
+// Cookie 规则一律锚定 Cookie 名开头（/^…/），避免子串误命中：
+// - XSRF-TOKEN 是 Laravel/Angular/ASP.NET 共用特征，不再单独判给 Laravel；
+// - Magento 只认 mage*/magento*/frontend_secret*/adminhtml* 前缀，不再用裸 "mage"（会命中 image 类命名）。
+export const COOKIE_TECH = [
   { re: /^(wordpress|wp-|woocommerce)/i, name: 'WordPress' },
   { re: /^PHPSESSID$/i, name: 'PHP (会话)' },
   { re: /^JSESSIONID$/i, name: 'Java / Servlet 容器' },
   { re: /^(ASP\.NET_SessionId|\.AspNet|ASPXAUTH|ARRAffinity)/i, name: 'ASP.NET' },
-  { re: /^(laravel_session|XSRF-TOKEN|remember_web_)/i, name: 'Laravel' },
+  { re: /^(laravel_session|remember_web_)/i, name: 'Laravel' },
+  { re: /^XSRF-TOKEN$/i, name: 'CSRF Cookie (XSRF-TOKEN，Laravel/Angular/ASP.NET 通用，需佐证)' },
   { re: /^(ci_session|csrf_test_name)/i, name: 'CodeIgniter' },
   { re: /^(SFSYMFOS|symfony)/i, name: 'Symfony' },
   { re: /^_session_id$/i, name: 'Ruby on Rails' },
   { re: /^(SESS[0-9a-f]{8,}|has_js|drupal)/i, name: 'Drupal' },
   { re: /^(connect\.sid|express\.sess|sid)/i, name: 'Express / Node.js' },
   { re: /django|csrftoken/i, name: 'Django' },
-  { re: /magnento|mage|mage-cache/i, name: 'Magento' },
+  { re: /^(magento|mage[-_]|frontend[-_]?(secret|pro)|adminhtml)/i, name: 'Magento' },
   { re: /^cake/i, name: 'CakePHP' }
-]
+] satisfies PatternRule[]
 
-export const URL_LIB_PATTERNS: PatternRule[] = [
+// URL 库规则：库名类模式统一加 (?:^|[/._-]) 前缀边界，避免 "grid3.min.js"、"barchart.min.js"、"nonreact/" 这类子串误报。
+export const URL_LIB_PATTERNS = [
   { re: /jquery[.-]?(\d[\d.]*)?(\.min)?\.js/i, name: 'jQuery' },
-  { re: /zepto/i, name: 'Zepto' },
+  { re: /(?:^|[\/._-])zepto/i, name: 'Zepto' },
   { re: /bootstrap(\.min)?(\d[\d.]*)?\.js|\/bootstrap\//i, name: 'Bootstrap' },
   { re: /vue(\.runtime|\.global)?(\.prod)?(\.min)?\.js|\/vue\//i, name: 'Vue' },
-  { re: /react-dom[\w.]*\.js|react[\w.]*\.min\.js|\/react\//i, name: 'React' },
+  { re: /react-dom[\w.]*\.js|(?:^|[\/._-])react[\w.-]*\.js|(?:^|\/)react\//i, name: 'React' },
   { re: /\/_next\/|__NEXT_DATA__|next\/(\d[\d.]*)/i, name: 'Next.js' },
   { re: /\/_nuxt\/|nuxt(\.min)?\.js/i, name: 'Nuxt.js' },
   { re: /chunk-vendors/i, name: 'Vue (webpack 打包)' },
   { re: /angular([\w.-]*)\.js|\/angular\//i, name: 'AngularJS/Angular' },
   { re: /svelte/i, name: 'Svelte' },
-  { re: /lodash(\.min)?\.js/i, name: 'lodash' },
-  { re: /moment(\.min)?\.js/i, name: 'Moment.js' },
-  { re: /axios(\.min)?\.js/i, name: 'Axios' },
-  { re: /three(\.min)?\.js/i, name: 'Three.js' },
-  { re: /d3(\.v\d)?(\.min)?\.js/i, name: 'D3' },
+  { re: /(?:^|[\/._-])lodash(\.min)?\.js/i, name: 'lodash' },
+  { re: /(?:^|[\/._-])moment(\.min)?\.js/i, name: 'Moment.js' },
+  { re: /(?:^|[\/._-])axios(\.min)?\.js/i, name: 'Axios' },
+  { re: /(?:^|[\/._-])three(\.min)?\.js/i, name: 'Three.js' },
+  { re: /(?:^|[\/._-])d3(\.v\d)?(\.min)?\.js/i, name: 'D3' },
   { re: /highcharts/i, name: 'Highcharts' },
   { re: /echarts/i, name: 'Apache ECharts' },
-  { re: /chart\.?(\.min)?\.js|chartjs/i, name: 'Chart.js' },
+  { re: /(?:^|[\/._-])chart(\.min)?\.js|chartjs/i, name: 'Chart.js' },
   { re: /tinymce/i, name: 'TinyMCE' },
   { re: /ckeditor/i, name: 'CKEditor' },
   { re: /swiper/i, name: 'Swiper' },
-  { re: /gsap|greensock/i, name: 'GSAP' },
+  { re: /(?:^|[\/._-])gsap|greensock/i, name: 'GSAP' },
   { re: /modernizr/i, name: 'Modernizr' },
   { re: /socket\.?io/i, name: 'Socket.IO' },
   { re: /firebase|firestore/i, name: 'Firebase' },
-  { re: /sentry|browser[\w.]*bundle\.min\.js/i, name: 'Sentry' },
+  { re: /(?:^|[\/._-])sentry|browser[\w.]*bundle\.min\.js/i, name: 'Sentry' },
   { re: /\/wp-content\/|\/wp-includes\/|\/wp-json\//i, name: 'WordPress' },
   { re: /\/sites\/all\/|\/sites\/default\/|\/core\/misc\//i, name: 'Drupal' },
   { re: /joomla|\/media\/jui\//i, name: 'Joomla' },
-  { re: /magento|\/static\/frontend\//i, name: 'Magento' },
+  { re: /(?:^|[\/._-])magento|\/static\/frontend\//i, name: 'Magento' },
   { re: /shopify|cdn\.shopify|\/shopify\//i, name: 'Shopify' },
   { re: /wixstatic|parastorage/i, name: 'Wix' },
   { re: /elementor/i, name: 'Elementor (WordPress)' },
@@ -107,11 +115,11 @@ export const URL_LIB_PATTERNS: PatternRule[] = [
   { re: /cdn\.jsdelivr\.net/i, name: 'jsDelivr CDN' },
   { re: /unpkg\.com/i, name: 'unpkg CDN' },
   { re: /cdnjs\.cloudflare\.com/i, name: 'Cloudflare CDN (cdnjs)' },
-  { re: /\/cdn-cgi\//i, name: 'Cloudflare (CDN/边缘)' },
+  { re: /\/(?:cdn-cgi)\//i, name: 'Cloudflare (CDN/边缘)' },
   { re: /\/_next\/image|images\.cloudinary\.com|cloudfront\.net|imgix\.net/i, name: '图片 CDN/处理服务' }
-]
+] satisfies PatternRule[]
 
-export const HTML_PATTERNS: PatternRule[] = [
+export const HTML_PATTERNS = [
   { re: /<div[^>]+id="__next"/i, name: 'Next.js' },
   { re: /data-react(root|id)=/i, name: 'React' },
   { re: /ng-version=/i, name: 'Angular', version: 'ng-version' },
@@ -125,9 +133,9 @@ export const HTML_PATTERNS: PatternRule[] = [
   { re: /data-turbo|turbolinks/i, name: 'Hotwire / Turbolinks (Rails)' },
   { re: /<amp-|data-amp/i, name: 'AMP' },
   { re: /csrf-token|name="_token"/i, name: 'CSRF token 存在 (Rails/Laravel 等)' }
-]
+] satisfies PatternRule[]
 
-export const GLOBAL_VARS: GlobalVarProbe[] = [
+export const GLOBAL_VARS = [
   { probe: 'jQuery', name: 'jQuery', versionPaths: ['jQuery.fn.jquery'] },
   { probe: '$', name: 'jQuery / $ (弱)', weak: true },
   { probe: 'Zepto', name: 'Zepto', versionPaths: ['Zepto.fn.zpto'] },
@@ -189,9 +197,9 @@ export const GLOBAL_VARS: GlobalVarProbe[] = [
   { probe: 'webpackChunk', name: 'Webpack 打包' },
   { probe: 'webpackChunk_N_E', name: 'Next.js (webpack)' },
   { probe: 'regeneratorRuntime', name: 'Babel/regenerator' }
-]
+] satisfies GlobalVarProbe[]
 
-export const WAF_RULES: WafRule[] = [
+export const WAF_RULES = [
   {
     name: 'Cloudflare',
     vendor: 'Cloudflare',
@@ -282,12 +290,24 @@ export const WAF_RULES: WafRule[] = [
     headers: [{ n: 'wsbl', v: /\d/ }, { n: 'x-ws' }],
     cookies: [/^wsrid$/]
   }
-]
+] satisfies WafRule[]
 
-export function identifyFromUrl(url: string): { name: string; version: string | null } | null {
+/** 单条 URL 可命中多个组件：返回全部命中（按名称去重），不再首命中即返回，避免先命中的宽泛规则遮蔽后面的真实指纹 */
+export interface UrlTechMatch {
+  name: string
+  version: string | null
+}
+
+export function identifyFromUrl(url: string): UrlTechMatch[] {
+  const out: UrlTechMatch[] = []
+  const seen = new Set<string>()
   for (const p of URL_LIB_PATTERNS) {
     const m = url.match(p.re)
-    if (m) return { name: p.name, version: versionFrom(m[1] || url) }
+    if (!m) continue
+    const key = p.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ name: p.name, version: versionFrom(m[1] || url) })
   }
-  return null
+  return out
 }

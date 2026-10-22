@@ -3,6 +3,8 @@ import type { Scope, Settings } from '../types'
 
 /** 页面侧实时状态快照：background 串行写入 chrome.storage.local 的 liveState 键，与采集结果分离 */
 export interface LiveSnapshot {
+  /** 回传来源站点键（url-utils.getAllInSiteKey，小写 hostname） */
+  siteKey?: string
   frameworkDetection?: any
   routerAnalysis?: any
   allInStatus?: any

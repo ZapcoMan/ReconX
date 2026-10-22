@@ -1,9 +1,14 @@
 // 统一导出中枢（自 lib/exporter.js 迁移为 ES 模块）
 // 在扩展页面上下文（popup/result/options）通过 <a download> 触发下载；不依赖 chrome.downloads，纯 DOM。
 import { generateBundleReportMarkdown } from './security-report'
+import * as UrlUtils from './url-utils'
+import type { Severity } from '../types'
 
-export const ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
-export const SEV_CN: Record<string, string> = { critical: '严重', high: '高危', medium: '中危', low: '低危', info: '提示', warn: '需核验', safe: '安全' }
+export const ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } satisfies Partial<Record<Severity, number>>
+export const SEV_CN = { critical: '严重', high: '高危', medium: '中危', low: '低危', info: '提示', warn: '需核验', safe: '安全' } satisfies Record<Severity, string>
+
+/** 安全取等级权重：字面量键表用 keyof 索引，未知等级排到末位，避免 any 下标静默返回 undefined */
+const rank = (s: unknown): number => ORDER[String(s) as keyof typeof ORDER] ?? 99
 
 function esc(s: any): string {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -21,12 +26,8 @@ function stamp(): string {
 }
 
 export function buildFilename(bundle: any, ext: string): string {
-  let host = 'site'
-  try {
-    host = new URL(bundle.meta.url).hostname.replace(/[^a-zA-Z0-9.-]/g, '_')
-  } catch {
-    host = (bundle.meta && bundle.meta.host) || 'site'
-  }
+  // 统一走 url-utils：非法 URL 不抛错，退回 bundle.meta.host
+  const host = UrlUtils.safeHostname(bundle.meta?.url).replace(/[^a-zA-Z0-9.-]/g, '_') || String(bundle.meta?.host || 'site').replace(/[^a-zA-Z0-9.-]/g, '_')
   return 'recon-' + host + '-' + stamp() + '.' + ext
 }
 
@@ -46,7 +47,8 @@ export function download(filename: string, content: string, mime?: string): void
 export interface FindingItem {
   category: string
   title: string
-  level: string
+  /** 统一用 Severity 字面量类型，索引 ORDER / SEV_CN 时编译期即可拦截非法等级 */
+  level: Severity
   target?: string
   detail?: string
   description?: string
@@ -59,13 +61,13 @@ export function collectFindings(bundle: any): FindingItem[] {
     items.push(o)
   }
   ;(bundle.js ? bundle.js.findings : []).concat(bundle.js ? bundle.js.inlineFindings : []).forEach((f: any) => {
-    if (ORDER[f.severity] <= ORDER.medium) add({ category: '敏感信息泄露', title: f.name, level: f.severity, target: f.url || 'inline', evidence: (f.samples || []).map((s: any) => s.masked), description: f.desc })
+    if (rank(f.severity) <= rank('medium')) add({ category: '敏感信息泄露', title: f.name, level: f.severity, target: f.url || 'inline', evidence: (f.samples || []).map((s: any) => s.value), description: f.desc })
   })
   ;(bundle.headers ? bundle.headers.missing : []).forEach((m: any) => {
-    if (ORDER[m.level] <= ORDER.medium) add({ category: '安全头', title: m.header + ' 缺失', level: m.level, evidence: [m.advice] })
+    if (rank(m.level) <= rank('medium')) add({ category: '安全头', title: m.header + ' 缺失', level: m.level, evidence: [m.advice] })
   })
   ;(bundle.headers ? bundle.headers.advisories : []).forEach((a: any) => {
-    if (ORDER[a.level] <= ORDER.medium) add({ category: '配置', title: a.type, level: a.level, detail: a.detail, evidence: [a.advice] })
+    if (rank(a.level) <= rank('medium')) add({ category: '配置', title: a.type, level: a.level, detail: a.detail, evidence: [a.advice] })
   })
   ;(bundle.js ? bundle.js.sourcemaps : []).forEach((s: any) => add({ category: '源码泄露', title: 'Source Map 可还原源码', level: 'low', target: s.from, evidence: [s.map] }))
   if (bundle.probes && bundle.probes.performed && bundle.probes.results) {
@@ -76,16 +78,16 @@ export function collectFindings(bundle: any): FindingItem[] {
   ;(bundle.links && bundle.links.classified ? bundle.links.classified : []).forEach((c: any) => {
     if (c.level === 'critical') add({ category: '敏感端点', title: (c.labels || []).join('/'), level: 'high', target: c.url, evidence: c.labels })
   })
-  items.sort((a, b) => (ORDER[a.level] || 9) - (ORDER[b.level] || 9))
+  items.sort((a, b) => rank(a.level) - rank(b.level))
   return items
 }
 
 export function filterBundle(bundle: any, opts?: { minSeverity?: string; categories?: string[] }): any {
-  opts = opts || {}
-  const minRank = opts.minSeverity ? ORDER[opts.minSeverity] : 99
-  const keepCat = Array.isArray(opts.categories) && opts.categories.length ? new Set(opts.categories) : null
-  const bySev = (s: string) => (s in ORDER ? ORDER[s] <= minRank : true)
-  const out = JSON.parse(JSON.stringify(bundle))
+  const minRank = opts?.minSeverity ? rank(opts.minSeverity) : 99
+  const keepCat = Array.isArray(opts?.categories) && opts!.categories!.length ? new Set(opts!.categories!) : null
+  const bySev = (s: string) => (s in ORDER ? rank(s) <= minRank : true)
+  // structuredClone（Chrome 98+）：原生深拷贝，不再依赖 JSON 可序列化性
+  const out = structuredClone(bundle)
   if (out.js) {
     const f = (arr: any[]) => (arr || []).filter((x) => bySev(x.severity))
     out.js.findings = f(out.js.findings)
@@ -145,7 +147,7 @@ export function toMarkdown(b: any): string {
   ;(b.waf || []).forEach((w: any) => L.push('- ' + w.name + (w.vendor ? ' (' + w.vendor + ')' : '') + ' — ' + (w.evidence || []).join(', ')))
   if (!b.waf || !b.waf.length) L.push('- （未发现）')
   L.push('')
-  L.push('## 发现项（已掩码，需人工复核）')
+  L.push('## 发现项（命中原文，需人工复核）')
   f.forEach((it, i) => {
     L.push('### ' + (i + 1) + '. [' + (SEV_CN[it.level] || it.level) + '] ' + it.category + '：' + it.title)
     if (it.target) L.push('- 位置：' + escMd(it.target))
@@ -186,7 +188,7 @@ export function toSrcMarkdown(b: any): string {
     L.push('')
     L.push('- **类型**：' + it.category)
     L.push('- **影响 URL/路径**：' + (it.target || '—'))
-    L.push('- **证据（掩码）**：' + (it.evidence || []).map(escMd).join(' ; ') + ' ' + (it.detail ? '/ ' + escMd(it.detail) : ''))
+    L.push('- **证据（原文）**：' + (it.evidence || []).map(escMd).join(' ; ') + ' ' + (it.detail ? '/ ' + escMd(it.detail) : ''))
     L.push('- **复现步骤**：（待补充）')
     L.push('- **影响说明**：（待补充，结合业务）')
     L.push('- **修复建议**：' + (it.description ? it.description + '（请据此评估）' : '（待补充）'))
@@ -214,7 +216,7 @@ export function toHtml(b: any): string {
     '</style></head><body><div class="wrap"><h1>Recon 采集报告</h1>' +
     '<div class="meta">目标：' + esc(b.meta.url) + ' ｜ 生成：' + new Date().toLocaleString('zh-CN') + ' ｜ 在允许域：' + (b.meta.inScope ? '是' : '否') + '</div>' +
     '<div class="chips">' + chip('严重', c.critical) + chip('高危', c.high) + chip('中危', c.medium) + chip('低危', c.low) + chip('端点', b.links ? b.links.total : 0) + '</div>' +
-    '<h2>发现项（已掩码）</h2><table><thead><tr><th>等级</th><th>类别</th><th>标题</th><th>位置</th><th>证据</th></tr></thead><tbody>' + (f.map(find).join('') || '<tr><td colspan=5>无</td></tr>') + '</tbody></table>' +
+    '<h2>发现项（命中原文）</h2><table><thead><tr><th>等级</th><th>类别</th><th>标题</th><th>位置</th><th>证据</th></tr></thead><tbody>' + (f.map(find).join('') || '<tr><td colspan=5>无</td></tr>') + '</tbody></table>' +
     '<h2>技术栈</h2><ul>' + (tech || '<li>无</li>') + '</ul>' +
     '<h2>WAF / 边缘防护</h2><ul>' + (waf || '<li>未发现</li>') + '</ul>' +
     '<footer>本报告由 ReconX 生成，仅用于已授权目标。命中皆为线索，需人工确认。</footer></div></body></html>'

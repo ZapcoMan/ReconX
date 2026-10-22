@@ -5,6 +5,7 @@ import * as HeaderChecks from './core/header-checks'
 import * as UrlClassify from './core/url-classify'
 import * as ApiExtract from './core/api-extract'
 import * as TechStack from './core/tech-stack'
+import * as UrlUtils from './core/url-utils'
 import { computeExtras } from './core/collect-extras'
 import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
@@ -79,13 +80,10 @@ interface HeadersEntry { main: Array<{ name: string; value: string }>; subFrames
 const headersCache = new Map<string, HeadersEntry>()
 function cacheHeaders(details: chrome.webRequest.WebResponseHeadersDetails): void {
   if (!details.responseHeaders) return
-  let host: string
-  try {
-    host = new URL(details.url).hostname
-  } catch {
-    return
-  }
-  const entry = headersCache.get(host) || { main: [], subFrames: [] }
+  // url-utils：非法/非 http(s) URL 统一返空串，不再局部 try/catch
+  const host = UrlUtils.safeHostname(details.url)
+  if (!host) return
+  const entry = headersCache.get(host) ?? { main: [], subFrames: [] }
   const pairs = details.responseHeaders.map((h) => ({ name: h.name, value: h.value || '' }))
   if (details.type === 'main_frame') entry.main = pairs
   else if (entry.subFrames.length < 30) entry.subFrames.push({ type: String(details.type), url: details.url, pairs })
@@ -193,12 +191,12 @@ async function limit<T, R>(items: T[], n: number, fn: (it: T) => Promise<R>): Pr
 // ---------------- 扫描 JS（敏感信息 + 端点 + sourcemap） ----------------
 async function scanJs(scriptUrls: string[], inlineText: string, currentHost: string, scopeHosts: string[], settings: Settings): Promise<any> {
   const endpoints: ApiExtract.EndpointsAccumulator = Object.create(null)
-  const shortSource = (u: string): string => { try { return new URL(u).pathname.split('/').pop() || u } catch { return u } }
+  const shortSource = UrlUtils.filenameOf
   const uniq: string[] = []
   const seen = new Set<string>()
   for (const u of scriptUrls) {
-    let h: string
-    try { h = new URL(u).hostname } catch { continue }
+    const h = UrlUtils.safeHostname(u)
+    if (!h) continue
     if (h !== currentHost && !scopeHosts.includes(h)) continue
     if (seen.has(u)) continue
     seen.add(u)
@@ -219,7 +217,8 @@ async function scanJs(scriptUrls: string[], inlineText: string, currentHost: str
 
 // ---------------- 链接 / 端点归一 ----------------
 function buildLinks(payload: any, host: string): any {
-  const norm = (href: string): URL | null => { try { const u = new URL(href, payload.url); if (!/^https?:$/.test(u.protocol)) return null; return u } catch { return null } }
+  // url-utils.toAbsolute：相对 base 解析 + 仅 http/https，与旧 norm() 语义一致
+  const norm = (href: string): URL | null => UrlUtils.toAbsolute(href, payload.url)
   const seen = new Set<string>()
   const endpoints: any[] = []
   const paramCount = new Map<string, number>()
@@ -281,7 +280,7 @@ function buildTech(payload: any, headerReport: any, windowVars: any[], resources
   if (headerReport.poweredBy) for (const p of Fingerprints.POWERED_BY) if (p.re.test(headerReport.poweredBy)) add(p.name, 'runtime', Fingerprints.versionFrom(headerReport.poweredBy), 'X-Powered-By: ' + headerReport.poweredBy)
   if (payload.metaGenerator) for (const g of Fingerprints.GENERATOR) if (g.re.test(payload.metaGenerator)) add(g.name, 'cms', Fingerprints.versionFrom(payload.metaGenerator), 'generator: ' + payload.metaGenerator)
   ;(headerReport.cookies || []).forEach((ck: any) => { for (const c of Fingerprints.COOKIE_TECH) if (c.re.test(ck.name)) add(c.name, 'session', null, 'cookie: ' + ck.name) })
-  for (const u of (resources.scripts || []).concat(resources.css || [])) { const id = Fingerprints.identifyFromUrl(u); if (id) add(id.name, 'library', id.version, 'resource: ' + u.split('?')[0].split('/').slice(-1)[0]) }
+  for (const u of (resources.scripts || []).concat(resources.css || [])) { for (const id of Fingerprints.identifyFromUrl(u)) add(id.name, 'library', id.version, 'resource: ' + UrlUtils.filenameOf(u)) }
   const html = payload.htmlEvidence || ''
   for (const p of Fingerprints.HTML_PATTERNS) if (p.re.test(html)) add(p.name, 'framework', null, 'html 特征')
   ;(windowVars || []).forEach((w) => { if (w.weak && (windowVars || []).some((x) => !x.weak && x.name === w.name)) return; add(w.name, 'framework', w.version, 'window.' + w.probe) })
@@ -350,11 +349,13 @@ async function injectAllIn(tabId: number): Promise<{ ok: boolean; injected: bool
 async function runProbes(origin: string, host: string, tabId?: number): Promise<any> {
   if (!(await inScope(host))) return { ok: false, error: 'out_of_scope' }
   if (!(await getSettings()).activeProbe) return { ok: false, error: 'probe_disabled' }
+  // 探测目标必须是合法 http(s) origin，拒绝脏数据发起的请求
+  if (!UrlUtils.isHttpUrl(origin)) return { ok: false, error: 'bad-origin' }
   const results: any[] = []
   const probes = SensitiveRules.PATH_PROBES
   for (let i = 0; i < probes.length; i++) {
     const p = probes[i]
-    const url = origin.replace(/\/$/, '') + p.path
+    const url = UrlUtils.joinPath(origin, p.path)
     let status = 0, bytes = 0, error: string | null = null, matched = false
     try {
       const ctrl = new AbortController()
@@ -412,8 +413,10 @@ async function persistBundle(bundle: any): Promise<void> {
 async function collect(tabId: number): Promise<any> {
   let tab: chrome.tabs.Tab
   try { tab = await chrome.tabs.get(tabId) } catch { return { ok: false, error: 'tab-unreadable', hint: '无法读取该标签页，可能在 chrome:// 等受限页。' } }
-  let host = '', isHttps = false
-  try { const u = new URL(tab.url as string); host = u.hostname; isHttps = u.protocol === 'https:' } catch { return { ok: false, error: 'bad-url', hint: '当前页面 URL 不受支持。' } }
+  const pageUrl = UrlUtils.parseHttpUrl(tab.url)
+  if (!pageUrl) return { ok: false, error: 'bad-url', hint: '当前页面 URL 不受支持。' }
+  const host = pageUrl.hostname
+  const isHttps = pageUrl.protocol === 'https:'
   if (!(await inScope(host))) return { ok: false, error: 'out_of_scope', hint: '该主机不在允许域范围内：请先在弹窗把它加入范围并完成授权。', host }
   const scope = await getScope()
   const settings = await getSettings()
@@ -518,24 +521,27 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
   // ---- content.ts 推送的 {action: 'reconxXXX'}：仅接受来自页面脚本的转发 ----
   if (msg.action && msg.action.startsWith('reconx')) {
     if (!sender || !sender.tab) return
+    // 页面回传统一记录站点键（url-utils.getAllInSiteKey），供结果页区分回传来源
+    const siteKey = UrlUtils.getAllInSiteKey(sender.tab.url)
     switch (msg.action) {
       case 'reconxFrameworkDetectionResult':
-        enqueueLive((s) => { s.frameworkDetection = msg.result })
+        enqueueLive((s) => { s.siteKey = siteKey; s.frameworkDetection = msg.result })
         break
       case 'reconxRouterAnalysisResult':
-        enqueueLive((s) => { s.routerAnalysis = msg.result })
+        enqueueLive((s) => { s.siteKey = siteKey; s.routerAnalysis = msg.result })
         break
       case 'reconxAllInStatus':
-        enqueueLive((s) => { s.allInStatus = msg.status })
+        enqueueLive((s) => { s.siteKey = siteKey; s.allInStatus = msg.status })
         break
       case 'reconxApiResult':
-        enqueueLive((s) => { s.apiExtractResult = msg.result })
+        enqueueLive((s) => { s.siteKey = siteKey; s.apiExtractResult = msg.result })
         break
       case 'reconxApiProgress':
       case 'reconxApiError':
       case 'reconxRouterAnalysisError':
       case 'reconxDetectorError':
         enqueueLive((s) => {
+          s.siteKey = siteKey
           s.errors = Object.assign({}, s.errors, { [msg.action]: msg.result || msg.error })
         })
         break
