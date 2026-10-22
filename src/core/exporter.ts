@@ -165,7 +165,7 @@ export function toMarkdown(b: any): string {
   }
   if (b.probes && b.probes.performed) {
     L.push('## 主动探测')
-    ;(b.probes.results || []).filter((p: any) => p.matched).forEach((p: any) => L.push('- [' + (SEV_CN[p.severity] || p.severity) + '] ' + p.path + ' -> ' + p.status + ' ' + p.desc))
+    ;(b.probes.results || []).filter((p: any) => p.matched).forEach((p: any) => L.push('- [' + (SEV_CN[p.severity as keyof typeof SEV_CN] || p.severity) + '] ' + p.path + ' -> ' + p.status + ' ' + p.desc))
     L.push('')
   }
   L.push('---')

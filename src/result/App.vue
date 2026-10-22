@@ -293,9 +293,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, toRaw } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
-import { exportBundle, exportFullReport, exportMulti, parseJson } from '../core/exporter'
+import { exportBundle, exportFullReport, exportMulti, filterBundle, parseJson } from '../core/exporter'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
 import Pager from './Pager.vue'
@@ -403,13 +403,18 @@ const extraBundles = ref<any[]>([])
 const multiMsg = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 
+// bundle.value 是 Vue 响应式代理，filterBundle 内的 structuredClone 无法拷贝 Proxy，必须先 toRaw
+function exportView(): any {
+  const raw = toRaw(bundle.value)
+  return exportMinSeverity.value ? filterBundle(raw, { minSeverity: exportMinSeverity.value }) : raw
+}
 function onExport(fmt: string): void {
   if (!bundle.value) return
-  const opts = exportMinSeverity.value ? { minSeverity: exportMinSeverity.value } : undefined
-  if (fmt === 'full') exportFullReport(bundle.value, (bundle.value.meta && bundle.value.meta.url) || '')
-  else if (fmt === 'all') exportBundle(bundle.value, ['json', 'csv', 'md', 'src', 'html', 'txt'], opts)
-  else if (fmt === 'multi') exportMulti([bundle.value, ...extraBundles.value], 'md')
-  else exportBundle(bundle.value, fmt, opts)
+  const view = exportView()
+  if (fmt === 'full') exportFullReport(view, (view.meta && view.meta.url) || '')
+  else if (fmt === 'all') exportBundle(view, ['json', 'csv', 'md', 'src', 'html', 'txt'])
+  else if (fmt === 'multi') exportMulti([view, ...extraBundles.value.map((b) => toRaw(b))], 'md')
+  else exportBundle(view, fmt)
 }
 function pickBundles(): void {
   fileInput.value?.click()
@@ -435,7 +440,7 @@ function importDorks(): void {
   if (!parsed.ok) { dorkImportMsg.value = 'JSON 解析失败：' + parsed.error; return }
   const v = validateImport(parsed.data)
   if (!v.ok) { dorkImportMsg.value = '校验失败：' + v.error + '（顶层需为含 name/template 的数组）'; return }
-  userDorks[dorkPkg.value] = v.data || parsed.data
+  userDorks[dorkPkg.value] = parsed.data
   chrome.storage.local.set({ userDorks: { general: userDorks.general, edu: userDorks.edu } })
   dorkImportMsg.value = '已并入「' + (dorkPkg.value === 'edu' ? '教育行业包' : '通用侦察包') + '」' + v.count + ' 条并保存'
   dorkImportText.value = ''
