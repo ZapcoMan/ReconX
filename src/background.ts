@@ -679,7 +679,13 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
     case 'REMOVE_HOST': {
       ;(async () => {
         const s = await removeHost(msg.host)
-        try { if (msg.origin) await chrome.permissions.remove({ origins: [msg.origin] }) } catch { /* */ }
+        // 授权时申请的是 origin + '/*'，撤销必须用同一 pattern，否则 permissions.remove 不匹配、权限撤不掉
+        try {
+          if (msg.origin) {
+            const pat = String(msg.origin).endsWith('/*') ? msg.origin : msg.origin + '/*'
+            await chrome.permissions.remove({ origins: [pat] })
+          }
+        } catch { /* */ }
         sendResponse({ ok: true, scope: s })
       })()
       return true
