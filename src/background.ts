@@ -29,13 +29,12 @@ async function registerAllInContentScript(): Promise<void> {
     if (already) {
       await chrome.scripting.unregisterContentScripts({ ids: [ALL_IN_SCRIPT_ID] })
     }
-    const scope = await getScope()
-    const matches = scope.hosts.map((h) => h.origin + '/*')
-    // 允许域为空、或主动探测总开关关闭时，只注销不注册
-    if (!matches.length || !(await getSettings()).activeProbe) return
+    // 1.0.0 去范围限制：接管脚本注册到全站 <all_urls>，仅由 activeProbe 总开关控制（默认关）。
+    // 开关关闭时只注销不注册，避免"装上即在任意站点静默改写页面"。
+    if (!(await getSettings()).activeProbe) return
     await chrome.scripting.registerContentScripts([{
       id: ALL_IN_SCRIPT_ID,
-      matches,
+      matches: ['<all_urls>'],
       js: ['all-in.js'],
 
       runAt: 'document_start',
