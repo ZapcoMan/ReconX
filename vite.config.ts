@@ -122,7 +122,7 @@ function copyToDistPlugin(): Plugin {
 const manifest = defineManifest({
   manifest_version: 3,
   name: 'ReconX - 前端资产与授权侦察',
-  version: '0.3.3',
+  version: '0.3.4',
   description:
     '已授权目标的浏览器侦察工作台：技术栈/WAF 指纹、响应头与 Cookie 分析、JS 敏感信息扫描、链接与参数收集、前端路由与 API 枚举；主动探测含客户端路由接管（不绕过服务端鉴权）。内置允许域范围管控。',
   action: {
