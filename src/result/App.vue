@@ -483,16 +483,27 @@ const assetStatus: Record<string, string> = { unsupported: '该平台不支持',
 
 const assetMatrix = computed(() => buildAssetMatrix(assetDomain.value, assetKeyword.value))
 const extraSourceRows = computed(() => buildExtraSources(assetDomain.value))
-function copyText(text: string): void {
+async function copyText(text: string): Promise<void> {
+  // writeText 返回 Promise，必须 await 才能捕获失败；此前未 await，rejection 不进 catch，
+  // execCommand 降级成了死代码，复制失败还毫无提示。
   try {
-    navigator.clipboard.writeText(text)
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制')
   } catch {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    ta.remove()
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      if (ok) ElMessage.success('已复制')
+      else ElMessage.error('复制失败，请手动选择')
+    } catch {
+      ElMessage.error('复制失败，请手动选择')
+    }
   }
 }
 function selectPre(e: MouseEvent): void {
