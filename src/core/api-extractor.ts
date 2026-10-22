@@ -34,9 +34,25 @@ interface ApiEndpointEntry { path: string; sources: string[] }
     }
 
     /**
+     * 一次性回传 token：content.js 注入本脚本时经 URL 查询参数 &n= 传入。
+     * 随每条消息携带，供 content.js 校验回传确实来自本次注入的脚本，
+     * 挡掉同源页面伪造的 API 提取结果。读不到时退化为空串（仅防御性兜底）。
+     */
+    const INJECTION_NONCE = (() => {
+        try {
+            const cs = document.currentScript as HTMLScriptElement | null;
+            const src = cs && cs.src ? cs.src : '';
+            return src ? new URL(src).searchParams.get('n') || '' : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+
+    /**
      * 向内容脚本统一发送消息（基础方法）。
      *
-     * 自动附带 source 标识，便于 content.js 区分消息来源。
+     * 自动附带 source 标识与本次注入握手 token，便于 content.js 区分来源并校验合法性。
+     * 投递目标限定当前页面同源，避免明文广播到任意源。
      * 发送失败（如页面消息通道被禁用）时静默忽略，不影响提取主流程。
      *
      * @param type - 消息类型，如 'RECONX_API_EXTRACT_RESULT'
@@ -46,8 +62,9 @@ interface ApiEndpointEntry { path: string; sources: string[] }
         try {
             window.postMessage(Object.assign({
                 type: type,
-                source: 'reconx-api-extractor'
-            }, payload), '*');
+                source: 'reconx-api-extractor',
+                nonce: INJECTION_NONCE
+            }, payload), location.origin);
         } catch (e) {
             // 页面消息不可用时不影响提取流程
         }

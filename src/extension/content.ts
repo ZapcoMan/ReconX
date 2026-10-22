@@ -39,6 +39,26 @@
     let detectorInjectionInProgress = false
 
     /**
+     * 本次注入握手用的一次性随机 token。
+     *
+     * 页面脚本通过 window.postMessage 把检测结果回传本脚本。回传通道运行在页面
+     * MAIN world，被审计的页面及其第三方脚本理论上也能 addEventListener('message')
+     * 观察、甚至伪造这些消息——本脚本仅校验 event.source===window 挡不住同源页面脚本。
+     * 因此每次注入生成一个随机 token，经 <script src="...&n=token"> 传给注入脚本，
+     * 注入脚本回传时携带；本脚本据此拒绝非本次握手的伪造消息，防止攻击者把假的
+     * 框架结果 / 路由表喂进安全审计。token 只用于「不可伪造」，无法阻止同源页面窃听
+     * （那是该传输通道的固有限制），但被审计页读到自身情报危害很低。
+     */
+    function genNonce(): string {
+        const c = (globalThis as any).crypto
+        if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+        return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+    }
+    const injectionNonce = genNonce()
+    /** 校验回传消息是否携带本次注入的 token（仅用于本脚本亲自注入的 detector / api-extractor） */
+    const isOurInjection = (data: Record<string, unknown>): boolean => data.nonce === injectionNonce
+
+    /**
      * detector 注入看门狗定时器。
      *
      * 注入锁只能靠页面脚本回传的消息释放，但存在「消息永不到达」的卡死路径：
@@ -105,7 +125,8 @@
             detectorInjectionInProgress = true
             armDetectorWatchdog()
             const script = document.createElement('script')
-            script.src = chrome.runtime.getURL('detector.js')
+            // 注入时经 URL 传入一次性 token，回传消息须携带它，供本脚本识别合法来源
+            script.src = chrome.runtime.getURL('detector.js') + '?n=' + encodeURIComponent(injectionNonce)
             // 加载成功后移除节点；注入是否成功由页面脚本回传的消息判定，
             // 故 onload 不释放锁——释放交给终态消息或看门狗超时。
             script.onload = function () {
@@ -144,8 +165,8 @@
     function injectApiExtractor(): boolean {
         try {
             const script = document.createElement('script')
-            // 附加时间戳参数，强制绕过缓存以支持重复提取
-            script.src = chrome.runtime.getURL('api-extractor.js') + '?t=' + Date.now()
+            // 附加时间戳参数，强制绕过缓存以支持重复提取；并传入一次性 token 供回传校验
+            script.src = chrome.runtime.getURL('api-extractor.js') + '?t=' + Date.now() + '&n=' + encodeURIComponent(injectionNonce)
             script.onload = function () {
                 script.remove()
             }
@@ -176,18 +197,24 @@
      *   2. 梭哈模式运行状态（来自 all-in.js）
      *   3. API 提取进度 / 结果 / 错误（来自 api-extractor.js）
      *
-     * 安全校验：只处理 event.source === window 的消息，排除其他窗口/iframe 的干扰；
-     * 对第三方来源的消息额外校验 event.data.source 字段，避免误转发。
+     * 安全校验：
+     *   - 仅处理 event.source === window 且 event.origin === location.origin 的消息；
+     *   - detector.js / api-extractor.js 的回传（类型 1、3）必须携带本次注入握手 token，
+     *     挡掉同源页面脚本伪造框架结果或路由表喂进审计；
+     *   - 类型 2 梭哈状态由 background 常驻注入、无法参与本 token 握手，沿用其
+     *     source==='reconx-all-in' 字段校验，是已知残留（仅上报用户自己的拦截动作，不喂外部情报）。
      */
     window.addEventListener('message', function (event: MessageEvent) {
-        // 只接受来自当前页面主世界的消息
+        // 只接受来自当前页面主框架、且同源的合法消息
         if (event.source !== window) return
+        if (event.origin !== location.origin) return
 
         try {
             const data = event.data as Record<string, unknown>
+            if (!data || typeof data !== 'object') return
 
-            // ---- 类型 1：框架检测结果 ----
-            if (data.type === 'RECONX_FRAMEWORK_DETECTION_RESULT') {
+            // ---- 类型 1：框架检测结果（须来自本次注入） ----
+            if (data.type === 'RECONX_FRAMEWORK_DETECTION_RESULT' && isOurInjection(data)) {
                 frameworkDetectionResult = data.result as typeof frameworkDetectionResult
                 if (!frameworkDetectionResult.detected) {
                     // 未检测到框架即为终态，释放锁
@@ -204,7 +231,7 @@
                 })
             }
             // ---- 类型 1：路由分析结果 ----
-            else if (data.type === 'RECONX_ROUTER_ANALYSIS_RESULT') {
+            else if (data.type === 'RECONX_ROUTER_ANALYSIS_RESULT' && isOurInjection(data)) {
                 routerAnalysisResult = data.result as Record<string, unknown>
                 // 分析流程结束，释放注入锁
                 releaseDetectorLock()
@@ -215,7 +242,7 @@
                 })
             }
             // ---- 类型 1：路由分析出错 ----
-            else if (data.type === 'RECONX_ROUTER_ANALYSIS_ERROR') {
+            else if (data.type === 'RECONX_ROUTER_ANALYSIS_ERROR' && isOurInjection(data)) {
                 releaseDetectorLock()
                 chrome.runtime.sendMessage({
                     action: "reconxRouterAnalysisError",
@@ -229,22 +256,22 @@
                     status: data.status
                 })
             }
-            // ---- 类型 3：API 提取进度 ----
-            else if (data.type === 'RECONX_API_EXTRACT_PROGRESS' && data.source === 'reconx-api-extractor') {
+            // ---- 类型 3：API 提取进度（须来自本次注入） ----
+            else if (data.type === 'RECONX_API_EXTRACT_PROGRESS' && data.source === 'reconx-api-extractor' && isOurInjection(data)) {
                 chrome.runtime.sendMessage({
                     action: "reconxApiProgress",
                     message: data.message
                 })
             }
             // ---- 类型 3：API 提取结果 ----
-            else if (data.type === 'RECONX_API_EXTRACT_RESULT' && data.source === 'reconx-api-extractor') {
+            else if (data.type === 'RECONX_API_EXTRACT_RESULT' && data.source === 'reconx-api-extractor' && isOurInjection(data)) {
                 chrome.runtime.sendMessage({
                     action: "reconxApiResult",
                     result: data.result
                 })
             }
             // ---- 类型 3：API 提取出错 ----
-            else if (data.type === 'RECONX_API_EXTRACT_ERROR' && data.source === 'reconx-api-extractor') {
+            else if (data.type === 'RECONX_API_EXTRACT_ERROR' && data.source === 'reconx-api-extractor' && isOurInjection(data)) {
                 chrome.runtime.sendMessage({
                     action: "reconxApiError",
                     error: data.error
@@ -296,11 +323,11 @@
                 sendResponse({ status: "analyzing" })
             }
             else if (request.action === "getAllInStatus") {
-                // 转发给 all-in.js，由页面脚本回传当前拦截统计
+                // 转发给 all-in.js，由页面脚本回传当前拦截统计（限定同源投递）
                 window.postMessage({
                     type: 'RECONX_GET_ALL_IN_STATUS',
                     source: 'reconx-extension'
-                }, '*')
+                }, location.origin)
                 sendResponse({ status: "requested" })
             }
             else if (request.action === "extractApi") {

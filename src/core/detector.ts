@@ -172,14 +172,35 @@ declare global {
     // ======== 消息发送函数 ========
 
     /**
+     * 一次性回传 token：content.js 注入本脚本时经 URL 查询参数 ?n= 传入。
+     * 每条回传消息都携带它，content.js 据此拒绝同源页面脚本伪造的检测/路由消息。
+     * 读不到时退化为空串（真实注入路径下一定存在，仅防御性兜底）。
+     */
+    const INJECTION_NONCE = (() => {
+        try {
+            const cs = document.currentScript as HTMLScriptElement | null;
+            const src = cs && cs.src ? cs.src : '';
+            return src ? new URL(src).searchParams.get('n') || '' : '';
+        } catch {
+            return '';
+        }
+    })();
+
+    /** 统一回传通道：附带握手 token，并把投递目标限定为当前页面同源，避免明文广播到任意源 */
+    function postToHost(payload: Record<string, unknown>): void {
+        payload.nonce = INJECTION_NONCE;
+        window.postMessage(payload, location.origin);
+    }
+
+    /**
      * 上报框架检测结果。
      * @param result - 形如 { detected: boolean, method: string, framework?: 'vue' | 'react' }
      */
     function sendResult(result: { detected: boolean; method: string; framework?: FrameworkKind }): void {
-        window.postMessage({
+        postToHost({
             type: 'RECONX_FRAMEWORK_DETECTION_RESULT',
             result: result
-        }, '*');
+        });
     }
 
     /**
@@ -245,14 +266,14 @@ declare global {
             // 序列化清理结果数据
             const sanitizedResult = sanitizeForPostMessage(result);
 
-            window.postMessage({
+            postToHost({
                 type: 'RECONX_ROUTER_ANALYSIS_RESULT',
                 result: sanitizedResult
-            }, '*');
+            });
         } catch (error) {
             console.warn('Failed to send router result:', error);
             // 发送最简化版本
-            window.postMessage({
+            postToHost({
                 type: 'RECONX_ROUTER_ANALYSIS_RESULT',
                 result: {
                     vueDetected: result?.vueDetected || false,
@@ -265,7 +286,7 @@ declare global {
                     error: 'Serialization failed',
                     allRoutes: []
                 }
-            }, '*');
+            });
         }
     }
 
@@ -274,10 +295,10 @@ declare global {
      * @param error - 错误描述文本
      */
     function sendError(error: string): void {
-        window.postMessage({
+        postToHost({
             type: 'RECONX_ROUTER_ANALYSIS_ERROR',
             error: error
-        }, '*');
+        });
     }
 
     // ======== Vue 检测函数 ========
