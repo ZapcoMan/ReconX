@@ -6,7 +6,9 @@ export const STORAGE_FALLBACK_LIMITS: Record<string, number> = {
   'api.liveApis': 300,
   'api.staticApis': 400,
   'routes.allRoutes': 300,
-  'routes.fullUrls': 300
+  'routes.fullUrls': 300,
+  // 探测产出的全量拼接 URL 体积与 fullUrls 同级，不纳入上限会让降级副本仍然超限
+  'probes.routes.routeFullUrls': 300
 }
 
 function cutList(target: any, path: string): void {
