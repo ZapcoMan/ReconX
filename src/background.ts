@@ -11,10 +11,11 @@ import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
 import { shrinkForStorage } from './core/storage-fallback'
 import { HISTORY_INDEX_KEY, bundleKey, makeBundleId, metaOf, addToIndex, removeFromIndex, migrateLegacy, type BundleMeta } from './core/bundle-store'
+import * as UserRules from './core/user-rules'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
 
-const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [] }
+const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [], userPatterns: [], userProbes: [] }
 
 // ---------------- 常驻 Content Script 注册（document_start 时机注入 all-in.js） ----------------
 const ALL_IN_SCRIPT_ID = 'reconx-all-in-script'
@@ -205,14 +206,16 @@ async function scanJs(scriptUrls: string[], inlineText: string, currentHost: str
     uniq.push(u)
   }
   const targets = uniq.slice(0, settings.maxJsFiles)
+  // 自定义正则每次采集只编译一次；非法条目在导入阶段已被拒绝，这里再兜一层
+  const extraPatterns = UserRules.mergePatterns([], settings.userPatterns)
   const results = await limit(targets, settings.maxConcurrent, async (u) => {
     const r = await fetchText(u)
-    const findings = r.ok && r.text ? SensitiveRules.scanText(r.text, u) : []
+    const findings = r.ok && r.text ? SensitiveRules.scanText(r.text, u, { extraPatterns }) : []
     if (r.ok && r.text) ApiExtract.extractFromText(r.text, endpoints, shortSource(u))
     const maps = r.ok && r.text ? (r.text.match(/[#@]sourceMappingURL=([^\s'"]+)/g) || []).map((s: string) => s.replace(/[#@]sourceMappingURL=/, '')) : []
     return { url: u, status: r.status, ok: r.ok, skipped: !!r.skipped, error: r.error, size: r.size, findings, maps }
   })
-  const inlineFindings = inlineText ? SensitiveRules.scanText(inlineText, 'inline') : []
+  const inlineFindings = inlineText ? SensitiveRules.scanText(inlineText, 'inline', { extraPatterns }) : []
   if (inlineText) ApiExtract.extractFromText(inlineText, endpoints, 'inline')
   return { scanned: results.map((r) => ({ url: r.url, status: r.status, ok: r.ok, skipped: r.skipped, size: r.size, error: r.error })), findings: results.flatMap((r) => r.findings), inlineFindings, sourcemaps: results.flatMap((r) => r.maps.map((m: string) => ({ from: r.url, map: m }))), endpoints }
 }
@@ -359,11 +362,12 @@ async function injectAllIn(tabId: number): Promise<{ ok: boolean; injected: bool
 
 async function runProbes(origin: string, host: string, tabId?: number): Promise<any> {
   if (!(await inScope(host))) return { ok: false, error: 'out_of_scope' }
-  if (!(await getSettings()).activeProbe) return { ok: false, error: 'probe_disabled' }
+  const probeSettings = await getSettings()
+  if (!probeSettings.activeProbe) return { ok: false, error: 'probe_disabled' }
   // 探测目标必须是合法 http(s) origin，拒绝脏数据发起的请求
   if (!UrlUtils.isHttpUrl(origin)) return { ok: false, error: 'bad-origin' }
   const results: any[] = []
-  const probes = SensitiveRules.PATH_PROBES
+  const probes = UserRules.mergeProbes(SensitiveRules.PATH_PROBES, probeSettings.userProbes)
   for (let i = 0; i < probes.length; i++) {
     const p = probes[i]
     const url = UrlUtils.joinPath(origin, p.path)

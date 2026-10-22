@@ -75,6 +75,23 @@ export interface Scope {
   hosts: ScopeHost[]
 }
 
+/** 自定义密钥正则：JSON 存不了 RegExp，故落盘源码 + flags，用时才编译 */
+export interface UserPattern {
+  id: string
+  name: string
+  severity: Severity
+  source: string
+  flags?: string
+  desc: string
+}
+/** 自定义敏感路径探测条目 */
+export interface UserProbe {
+  path: string
+  severity: Severity
+  keywords: string[]
+  desc: string
+}
+
 export interface Settings {
   activeProbe: boolean
   maxJsFiles: number
@@ -82,6 +99,10 @@ export interface Settings {
   theme: 'dark' | 'light' | 'geek'
   /** 链接采集黑名单：裸域 / *.通配域 / 正则 /re/ 三种写法，解析见 url-classify.compileBlacklist */
   linkBlacklist: string[]
+  /** 自定义密钥正则（正则源码 + flags），编译与校验见 core/user-rules */
+  userPatterns: UserPattern[]
+  /** 自定义敏感路径探测条目 */
+  userProbes: UserProbe[]
 }
 
 export interface TechItem {

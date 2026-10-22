@@ -61,6 +61,37 @@
     </section>
 
     <section class="block">
+      <div class="block-head"><h2>扫描规则</h2><span class="hint">自定义条目只追加，内置 {{ BUILTIN_PATTERN_COUNT }} 条密钥规则与 {{ BUILTIN_PROBE_COUNT }} 条敏感路径始终生效</span></div>
+      <div class="fields">
+        <div class="field wide">
+          <div class="f-txt">
+            <b>自定义密钥正则（当前 {{ settings.userPatterns.length }} 条）</b>
+            <p>JSON 数组，每条需 <code>id / name / severity / source / desc</code>，可选 <code>flags</code>（默认 gi）。<code>source</code> 写正则源码、不要 <code>//</code> 包裹，捕获组匹配到的内容会作为命中原文输出，长度上限 200 字符。整批校验通过才并入——任一条不合法都会给出序号与原因并拒绝全部。</p>
+          </div>
+          <el-input v-model="patternText" type="textarea" :rows="4" placeholder='[{"id":"corp_token","name":"内部令牌","severity":"high","source":"corp_token[^0-9a-f]{0,3}([0-9a-f]{20,})","desc":"内部令牌硬编码"}]' />
+          <div class="bar-row">
+            <el-button size="small" @click="importPatterns">校验并入</el-button>
+            <el-button v-if="settings.userPatterns.length" size="small" @click="exportPatterns">导出备份</el-button>
+            <el-button v-if="settings.userPatterns.length" size="small" text type="danger" @click="clearPatterns">清除自定义</el-button>
+          </div>
+        </div>
+        <div class="field wide">
+          <div class="f-txt">
+            <b>自定义敏感路径探测（当前 {{ settings.userProbes.length }} 条）</b>
+            <p>JSON 数组，每条需 <code>path</code>（以 / 开头）、<code>severity</code>、<code>keywords</code>（响应体含其中任一词才算命中）、<code>desc</code>。与内置条目同路径时以内置为准，不会重复发请求。</p>
+          </div>
+          <el-input v-model="probeText" type="textarea" :rows="4" placeholder='[{"path":"/backup.sql","severity":"high","keywords":["INSERT INTO","mysqldump"],"desc":"数据库备份泄露"}]' />
+          <div class="bar-row">
+            <el-button size="small" @click="importProbes">校验并入</el-button>
+            <el-button v-if="settings.userProbes.length" size="small" @click="exportProbes">导出备份</el-button>
+            <el-button v-if="settings.userProbes.length" size="small" text type="danger" @click="clearProbes">清除自定义</el-button>
+          </div>
+        </div>
+      </div>
+      <div v-if="ruleMsg" class="hint rule-msg">{{ ruleMsg }}</div>
+    </section>
+
+    <section class="block">
       <div class="block-head"><h2>允许域</h2><span class="hint">只有列在这里的主机可被采集与探测</span></div>
       <el-table v-if="hosts.length" :data="hosts" size="small" class="hosts">
         <el-table-column label="主机">
@@ -102,15 +133,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as M from '../shared/messaging'
 import type { ScopeHost, Settings } from '../types'
 import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 import { applyTheme, resolveTheme } from '../shared/theme'
-import { HISTORY_LIMIT, type BundleMeta } from '../core/bundle-store'
+import { HISTORY_LIMIT, findInIndex, describeMeta, type BundleMeta } from '../core/bundle-store'
+import { parseJson, exportJson } from '../core/exporter'
+import { BUILTIN_PATTERN_COUNT, BUILTIN_PROBE_COUNT, validatePatternImport, validateProbeImport, toBackupPatterns } from '../core/user-rules'
 
-const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [] }
+const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [], userPatterns: [], userProbes: [] }
 
 const hosts = ref<ScopeHost[]>([])
 const settings = reactive<Settings>({ ...DEFAULTS })
@@ -127,6 +160,48 @@ function applyBlacklist(): Promise<void> {
 const history = ref<BundleMeta[]>([])
 const summaryOf = (m: BundleMeta): string => `端点 ${m.endpoints} · 路由 ${m.routes} · 发现 ${m.findings}${m.probes ? ' · 已探测' : ''}${m.truncated ? ' · 截断副本' : ''}`
 
+// 自定义规则：界面用 JSON 文本编辑，validate* 通过才并入并持久化；内置规则始终保留
+const patternText = ref('')
+const probeText = ref('')
+const ruleMsg = ref('')
+
+async function importPatterns(): Promise<void> {
+  const parsed = parseJson(patternText.value)
+  if (!parsed.ok) { ruleMsg.value = 'JSON 解析失败：' + parsed.error; return }
+  const v = validatePatternImport(parsed.data)
+  if (!v.ok) { ruleMsg.value = '密钥规则校验失败：' + v.error; return }
+  settings.userPatterns = parsed.data
+  await persist()
+  ruleMsg.value = '已并入 ' + v.count + ' 条自定义密钥规则'
+}
+
+async function importProbes(): Promise<void> {
+  const parsed = parseJson(probeText.value)
+  if (!parsed.ok) { ruleMsg.value = 'JSON 解析失败：' + parsed.error; return }
+  const v = validateProbeImport(parsed.data)
+  if (!v.ok) { ruleMsg.value = '探测条目校验失败：' + v.error; return }
+  settings.userProbes = parsed.data
+  await persist()
+  ruleMsg.value = '已并入 ' + v.count + ' 条自定义敏感路径探测'
+}
+
+function exportPatterns(): void { exportJson(toBackupPatterns(toRaw(settings.userPatterns)), 'reconx-user-patterns') }
+function exportProbes(): void { exportJson(toRaw(settings.userProbes), 'reconx-user-probes') }
+
+async function clearPatterns(): Promise<void> {
+  settings.userPatterns = []
+  patternText.value = ''
+  await persist()
+  ruleMsg.value = '已清除自定义密钥规则，内置 ' + BUILTIN_PATTERN_COUNT + ' 条不受影响'
+}
+
+async function clearProbes(): Promise<void> {
+  settings.userProbes = []
+  probeText.value = ''
+  await persist()
+  ruleMsg.value = '已清除自定义探测条目，内置 ' + BUILTIN_PROBE_COUNT + ' 条不受影响'
+}
+
 async function loadHistory(): Promise<void> {
   const r = await M.listBundles()
   history.value = (r.bundles || []) as BundleMeta[]
@@ -140,9 +215,13 @@ async function openInResult(id: string): Promise<void> {
 }
 
 async function removeOne(id: string): Promise<void> {
-  const target = history.value.find((m) => m.id === id)
+  const target = findInIndex(history.value, id)
   try {
-    await ElMessageBox.confirm(`删除 ${target ? target.host : '这条'} 的采集结果？其完整数据会一并从本机移除，不可恢复。`, '删除确认', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    // 确认框里带上这份结果的摘要，删除时能看清删的是哪一次采集
+    await ElMessageBox.confirm(`删除这份采集结果？
+${target ? describeMeta(target) : id}
+
+其完整数据会一并从本机移除，不可恢复。`, '删除确认', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
   } catch { return }
   await M.deleteBundle(id)
   await loadHistory()
@@ -166,6 +245,8 @@ onMounted(async () => {
   Object.assign(settings, { ...DEFAULTS }, s || {})
   blacklistText.value = (settings.linkBlacklist || []).join('\n')
   applyTheme(resolveTheme(settings.theme))
+  patternText.value = JSON.stringify(toBackupPatterns(settings.userPatterns), null, 2)
+  probeText.value = JSON.stringify(settings.userProbes, null, 2)
   // 历史列表要在页面打开时就拉一次，否则「采集历史」分区永远是空的
   await loadHistory()
 })
@@ -272,6 +353,8 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .6px; color: 
 .warn-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 10px; padding: 11px 14px; background: var(--rx-bg-soft); border: 1px solid var(--rx-border); border-left: 2px solid var(--rx-danger); border-radius: 9px; }
 .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: var(--rx-muted); }
 .hist-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; }
+.bar-row { display: flex; align-items: center; gap: 8px; }
+.rule-msg { display: block; margin-top: 10px; }
 .w-txt b { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
 .w-txt p { margin: 0; font-size: 11.5px; color: var(--rx-muted); }
 

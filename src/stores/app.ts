@@ -16,7 +16,7 @@ interface ActiveTab {
 export const useAppStore = defineStore('app', {
   state: () => ({
     scope: { hosts: [] } as Scope,
-    settings: { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [] } as Settings,
+    settings: { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [], userPatterns: [], userProbes: [] } as Settings,
     active: { tabId: null, host: '', origin: '', url: '' } as ActiveTab,
     inScope: false,
     hasCache: false,

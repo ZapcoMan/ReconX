@@ -117,12 +117,14 @@ export interface Finding {
   jwtDecoded?: Record<string, any>
 }
 
-export function scanText(text: string, url?: string, opts?: { perRuleCap?: number }): Finding[] {
+export function scanText(text: string, url?: string, opts?: { perRuleCap?: number; extraPatterns?: SensitivePattern[] }): Finding[] {
   opts = opts || {}
   const perRuleCap = opts.perRuleCap || 8
   const findings: Finding[] = []
   const body = String(text || '')
-  for (const p of PATTERNS) {
+  // PATTERNS 用 satisfies 保留了字面量 severity 类型，与用户规则并扫时统一按接口类型遍历
+  const rules: SensitivePattern[] = [...PATTERNS, ...(opts.extraPatterns || [])]
+  for (const p of rules) {
     const re = new RegExp(p.re.source, p.re.flags)
     const samples: FindingSample[] = []
     let m: RegExpExecArray | null
