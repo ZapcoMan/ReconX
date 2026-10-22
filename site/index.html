@@ -108,13 +108,26 @@
   </section>
 
   <section id="dual-source" class="block">
-    <h2>双源探测：不一致时不做取舍，摆出来给你判断</h2>
-    <p>框架与路由有两条独立采集路径，同一站点可能给出不同结论。ReconX 不静默择一，而是并列呈现并写明主次：主源为页面侧 <code>detector</code> 的全量分析，辅源为 background 同步注入的 <code>routerProbe</code>。</p>
-    <div class="compare">
-      <div class="cmp"><span class="badge">主源</span><strong>King-CrackX detector</strong><p>页面主世界全量分析，覆盖面更广，经消息桥异步回传。</p></div>
-      <div class="cmp"><span class="badge alt">辅源</span><strong>ReconX routerProbe</strong><p>background 同步注入取返回值，无时序依赖，确定性高，纯只读。</p></div>
+    <h2>双源探测 · 不一致时不替你取舍</h2>
+    <p>框架与路由各走两条独立采集路径，同一站点常会给出不同结论。ReconX 不静默择一，而是并列呈现、写明主次，把判断权交回你手里。</p>
+    <div class="dual">
+      <article class="dual-card">
+        <span class="badge">主源</span>
+        <h3>King-CrackX <code>detector</code></h3>
+        <p>页面主世界全量分析，覆盖面更广，经消息桥异步回传。</p>
+      </article>
+      <div class="dual-mid"><span>不一致时</span><em>并列对照</em></div>
+      <article class="dual-card alt">
+        <span class="badge alt">辅源</span>
+        <h3>ReconX <code>routerProbe</code></h3>
+        <p>background 同步注入取返回值，无时序依赖、确定性高，且纯只读。</p>
+      </article>
     </div>
-    <p>主源识别不出技术栈时，辅源自动升为兜底主源并在页面顶部写明。两路都可用时输出分歧清单：框架、路由库、路由条数差值、基础路径、页面推断路径逐项对比，另附一张按路径合并的并表，标出每条路由被哪一路命中。</p>
+    <ol class="dual-logic">
+      <li><b>主源可用</b><span>以主源为准，辅源仍完整列出，仅作交叉核对。</span></li>
+      <li><b>主源不可用</b><span>辅源自动升为兜底主源，页面顶部写明已改用辅源。</span></li>
+      <li><b>两路分歧</b><span>逐项对照框架 / 路由库 / 条数差值 / 基础路径 / 推断路径，并附一张按路径合并的并表，标出每条路由被哪一路命中。</span></li>
+    </ol>
   </section>
 
   <section id="install" class="block">
