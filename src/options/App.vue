@@ -269,8 +269,12 @@ onMounted(async () => {
 })
 
 async function persist(): Promise<void> {
-  // 走 background 而不是直写存储：activeProbe 变化要同步重算常驻接管脚本的注册
-  await M.setSettings({ ...settings })
+  // 走 background 而不是直写存储：activeProbe 变化要同步重算常驻接管脚本的注册。
+  // settings 是 reactive 深层代理，直接 {...settings} 展开出来的数组属性仍是 Proxy，
+  // sendMessage 的 structuredClone 会抛 DataCloneError 并被消息层静默吞掉，导致保存看似成功实则没写进去。
+  // 先序列化成纯数据快照再发，规避代理；并对失败给出提示，不再假装保存成功。
+  const r = await M.setSettings(JSON.parse(JSON.stringify(settings)))
+  if (!r.ok) ElMessage.error('设置保存失败，请重试')
 }
 
 async function changeTheme(id: ThemeId): Promise<void> {
