@@ -12,6 +12,7 @@ import { routerProbe } from './core/router-probe'
 import { shrinkForStorage } from './core/storage-fallback'
 import { HISTORY_INDEX_KEY, bundleKey, makeBundleId, metaOf, addToIndex, removeFromIndex, type BundleMeta } from './core/bundle-store'
 import { SCHEMA_KEY, STORAGE_SCHEMA_VERSION, runMigrations } from './core/storage-schema'
+import { HeadersCache, type HeadersEntry } from './core/headers-cache'
 import * as UserRules from './core/user-rules'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
@@ -53,6 +54,10 @@ async function getScope(): Promise<Scope> {
 }
 async function saveScope(s: Scope): Promise<void> {
   await chrome.storage.local.set({ scope: s })
+  // 同步刷新内存镜像，使 webRequest 范围门立即对新增/删除的主机生效
+  scopeHostCache = new Set(s.hosts.map((h) => h.host))
+  // 范围变更后清空响应头缓存：避免已移出范围的主机残留其历史敏感头
+  headersCache.clear()
 }
 async function addHost(host: string, origin: string, note?: string): Promise<Scope> {
   const s = await getScope()
@@ -80,20 +85,42 @@ async function inScope(host: string): Promise<boolean> {
 }
 
 // ---------------- 响应头缓存（来自 webRequest） ----------------
-interface HeadersEntry { main: Array<{ name: string; value: string }>; subFrames: Array<{ type: string; url: string; pairs: Array<{ name: string; value: string }> }> }
-const headersCache = new Map<string, HeadersEntry>()
+// 缓存本体（TTL 过期、容量淘汰）在 HeadersCache 内；这里只负责「范围门」：
+// 仅把允许域内主机的响应头喂进缓存，杜绝跨站点静默收集敏感头。
+const headersCache = new HeadersCache()
+
+// 允许域主机的内存镜像：webRequest 回调是同步高频触发，不能每次都 await 存储读取范围，
+// 因此维护一份内存 Set，在范围写入与启动时刷新。
+let scopeHostCache = new Set<string>()
+async function loadScopeCache(): Promise<void> {
+  try {
+    const s = await getScope()
+    scopeHostCache = new Set(s.hosts.map((h) => h.host))
+  } catch (e: any) {
+    // 读取失败保留旧缓存，不阻断收集
+    console.warn('[ReconX] 范围缓存刷新失败，沿用上一次范围：', e && e.message)
+  }
+}
+
 function cacheHeaders(details: chrome.webRequest.WebResponseHeadersDetails): void {
   if (!details.responseHeaders) return
   // url-utils：非法/非 http(s) URL 统一返空串，不再局部 try/catch
   const host = UrlUtils.safeHostname(details.url)
   if (!host) return
-  const entry = headersCache.get(host) ?? { main: [], subFrames: [] }
+  // 范围门：不在允许域内的主机一律不缓存
+  if (!scopeHostCache.has(host)) return
   const pairs = details.responseHeaders.map((h) => ({ name: h.name, value: h.value || '' }))
-  if (details.type === 'main_frame') entry.main = pairs
-  else if (entry.subFrames.length < 30) entry.subFrames.push({ type: String(details.type), url: details.url, pairs })
-  headersCache.set(host, entry)
+  headersCache.record(host, { type: String(details.type), url: details.url, pairs }, Date.now())
 }
+
+/** 读取主机缓存（命中但超时则由 HeadersCache 内部删除） */
+function readHeaders(host: string): HeadersEntry | undefined {
+  return headersCache.read(host, Date.now())
+}
+
 chrome.webRequest.onHeadersReceived.addListener(cacheHeaders, { urls: ['<all_urls>'], types: ['main_frame', 'sub_frame', 'xmlhttprequest'] }, ['responseHeaders'])
+// SW 唤醒即尽早刷新范围内存镜像，使范围门尽快生效
+void loadScopeCache()
 
 // ---------------- DOM 采集（函数式注入，直接返回 payload） ----------------
 async function collectDom(tabId: number): Promise<any> {
@@ -482,6 +509,8 @@ async function ensureSchema(): Promise<void> {
   } catch (e: any) {
     console.warn('[ReconX] 存储迁移未完成，将按当前结构继续使用：', e && e.message)
   }
+  // 顺带刷新范围内存镜像，使 webRequest 范围门与最新允许域一致
+  await loadScopeCache()
 }
 
 // ---------------- 主收集流程 ----------------
@@ -500,7 +529,7 @@ async function collect(tabId: number): Promise<any> {
   if (!payload || !payload.ok) return { ok: false, error: 'collect-empty', hint: (payload && payload.error) || '未采集到页面数据。', host }
 
   const windowVars = await collectWindowVars(tabId)
-  const cached = headersCache.get(host)
+  const cached = readHeaders(host)
   let headerPairs = (cached && cached.main) || []
   let headerNote = ''
   if (!headerPairs.length) {
@@ -636,7 +665,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         sendResponse({
           ok: true, scope, settings,
           inScope: msg.host ? scope.hosts.some((h) => h.host === msg.host) : false,
-          hasCache: msg.host ? !!((headersCache.get(msg.host) || { main: [] }).main.length) : false,
+          hasCache: msg.host ? !!((readHeaders(msg.host) || { main: [] }).main.length) : false,
           lastBundle: lastBundle || null,
           live
         })
