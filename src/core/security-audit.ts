@@ -53,9 +53,24 @@ export const PUBLIC_PATH_WORDS = new Set([
   'index', 'home', 'landing', 'root', 'preview', 'share', 'invite', 'download', 'public', 'static', 'assets'
 ])
 
-/** 把路径切成词：按 / - _ . 空格等非字母数字字符拆分，参数占位符 :id 会被丢掉 */
+/** 在小写/数字 → 大写 边界处断开驼峰：adminDelete → ['admin','Delete']；全小写段原样返回 */
+function splitCamel(seg: string): string[] {
+  return seg.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/\s+/).filter(Boolean)
+}
+
+/**
+ * 把路径切成词：先按 / - _ . 空格等非字母数字字符拆段（保留大小写），
+ * 再对每段做驼峰拆分，最后统一小写。参数占位符 :id 会被丢掉。
+ * 驼峰拆分是为了补回 /api/adminDelete、/api/userList 这类把关键词粘在驼峰里的端点——
+ * 仅按非字母数字切会得到 admindelete 整段，匹配不到 delete。
+ */
 export function pathTokens(path: string): string[] {
-  return String(path || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t && t.charAt(0) !== ':')
+  const out: string[] = []
+  for (const seg of String(path || '').split(/[^A-Za-z0-9]+/)) {
+    if (!seg || seg.charAt(0) === ':') continue
+    for (const w of splitCamel(seg)) { const lw = w.toLowerCase(); if (lw) out.push(lw) }
+  }
+  return out
 }
 
 /**
@@ -298,10 +313,21 @@ export function performSecurityAudit(params: AuditParams): Record<string, any> {
   const unauthorizedRoutes = routePermissions.filter((r) => RISK_LEVELS.indexOf(r.riskLevel) >= 0)
   const sourceMapRisks = analyzeSourceMapRisks(params.sourceMaps)
 
-  const criticalCount = sensitiveApis.filter((a) => a.riskLevel === 'critical').length
-  const highCount = sensitiveApis.filter((a) => a.riskLevel === 'high').length
-  const mediumCount = sensitiveApis.filter((a) => a.riskLevel === 'medium').length
-  const lowCount = sensitiveApis.filter((a) => a.riskLevel === 'low').length
+  // 风险计数按 path 归并、每条路径只取最高等级一次：一条 /api/admin/user/delete 同时命中
+  // 管理接口/用户数据/删除操作会生成多条 hit，若按 hit 条数累加会把 criticalCount 虚高、
+  // 把 overallRisk 推高。展示用的 sensitiveApis 仍保留全部命中，仅计数去重。
+  const LEVEL_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+  const worstByPath = new Map<string, string>()
+  for (const a of sensitiveApis) {
+    const cur = worstByPath.get(a.path)
+    const ao = LEVEL_ORDER[a.riskLevel] != null ? LEVEL_ORDER[a.riskLevel] : 9
+    if (cur == null || ao < (LEVEL_ORDER[cur] != null ? LEVEL_ORDER[cur] : 9)) worstByPath.set(a.path, a.riskLevel)
+  }
+  const worstLevels = [...worstByPath.values()]
+  const criticalCount = worstLevels.filter((l) => l === 'critical').length
+  const highCount = worstLevels.filter((l) => l === 'high').length
+  const mediumCount = worstLevels.filter((l) => l === 'medium').length
+  const lowCount = worstLevels.filter((l) => l === 'low').length
   const protectedRoutes = routePermissions.filter((r) => r.isProtected).length
   const unprotectedRoutes = unauthorizedRoutes.length
   const publicRoutes = routePermissions.filter((r) => r.expectedPublic).length
