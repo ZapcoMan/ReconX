@@ -110,16 +110,21 @@ export interface SensitiveRule {
   decode?: boolean
 }
 
+// 链接敏感分级规则。
+// 与 security-audit 的路径判定同源：URL 是连续字符串，裸词正则会被普通资源名和随机串命中
+// （/static/js/debug.js、/assets/sfz1234.png、/api/backup-list 都曾被判成敏感线索）。
+// 因此一律要求前导分隔符与后继边界，查询参数形态（?debug=1）单独允许。
 export const SENSITIVE_RULES = [
-  { id: 'db', label: '数据库', level: 'critical', re: /\.(sql|db|mdb|dump|sqlite)(\?|$|&)/i },
-  { id: 'backup', label: '备份', level: 'critical', re: /(\.bak|\.old|\.zip|\.rar|\.7z|backup|www\.zip|web\.zip|site\.zip)(\?|$|&|\/)/i },
-  { id: 'config', label: '配置', level: 'critical', re: /(\.env|config\.php|web\.config|application\.ya?ml|\.ini|\.properties)(\?|$|&)/i },
-  { id: 'vcs', label: '版本控制', level: 'critical', re: /(\.git\/|\.svn\/|\.git$|\.svn$)/i },
-  { id: 'admin', label: '后台', level: 'warn', re: /(\/admin|\/manage|\/guanli|\/login|\/system)(\/|$|\?)/i },
-  { id: 'debug', label: '接口调试', level: 'warn', re: /(swagger|api-docs|druid|actuator|phpinfo|debug|nacos|jenkins)/i },
-  { id: 'upload', label: '上传点', level: 'warn', re: /(ueditor|umeditor|uploadify|fileupload|kindeditor)/i },
+  { id: 'db', label: '数据库', level: 'critical', re: /\.(sql|db|mdb|sqlite|dump)(\?|$|&|\/)/i },
+  { id: 'backup', label: '备份', level: 'critical', re: /\.(bak|old)(\?|$|&|\/)|[\/(]backup($|[\/.?])|backup[^?#]*\.(zip|rar|7z|gz|sql|tar\.gz)|(^|[\/.])(www|web|site|beifen)\.(zip|rar|tar\.gz)(\?|$|&)/i },
+  { id: 'config', label: '配置', level: 'critical', re: /(\.env|\.ini|\.properties|config\.php|web\.config|application\.ya?ml)(\?|$|&)/i },
+  { id: 'vcs', label: '版本控制', level: 'critical', re: /\/\.(git|svn)(\/|$|\?|#)/i },
+  // 不含 /login：登录页是预期公开入口，判成"后台 warn"纯属噪音（与路由侧的公开豁免口径一致）
+  { id: 'admin', label: '后台', level: 'warn', re: /\/(admin|administrator|manage|manager|management|guanli|console|backend|system)($|[\/.?])/i },
+  { id: 'debug', label: '接口调试', level: 'warn', re: /\/(swagger-ui|swagger|api-docs|druid|actuator|phpinfo|nacos|jenkins)($|[\/.?])|[?&](debug|test|trace)=/i },
+  { id: 'upload', label: '上传点', level: 'warn', re: /\/(ueditor|umeditor|uploadify|fileupload|kindeditor)(\/|$|\?|\.)/i },
   { id: 'student', label: '学生数据', level: 'info', re: /(学生|名单|花名册|学籍|录取|成绩|xueji|luqu|chengji)/i, decode: true },
-  { id: 'idcard', label: '证件信息', level: 'info', re: /(身份证|证件|idcard|id_card|sfz)/i, decode: true },
+  { id: 'idcard', label: '证件信息', level: 'info', re: /(身份证|证件|id[_-]?card|(^|[\/_.])sfz([\/_.]|$))/i, decode: true },
   { id: 'doc', label: '文档', level: 'info', re: /\.(xls|xlsx|doc|docx|pdf|csv)(\?|$|&)/i }
 ] satisfies SensitiveRule[]
 
