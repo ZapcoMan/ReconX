@@ -21,8 +21,8 @@
   </a>
   <nav class="nav">
     <a href="#capabilities">能力</a>
-    <a href="#features">功能</a>
     <a href="#dual-source">双源探测</a>
+    <a href="#features">功能</a>
     <a href="#install">安装</a>
     <a href="#credits">来源</a>
   </nav>
@@ -78,6 +78,29 @@
     </div>
   </section>
 
+  <section id="dual-source" class="block">
+    <h2>双源探测 · 不一致时不替你取舍</h2>
+    <p>框架与路由各走两条独立采集路径，同一站点常会给出不同结论。ReconX 不静默择一，而是并列呈现、写明主次，把判断权交回你手里。</p>
+    <div class="dual">
+      <article class="dual-card">
+        <span class="badge">主源</span>
+        <h3>King-CrackX <code>detector</code></h3>
+        <p>页面主世界全量分析，覆盖面更广，经消息桥异步回传。</p>
+      </article>
+      <div class="dual-mid"><span>不一致时</span><em>并列对照</em></div>
+      <article class="dual-card alt">
+        <span class="badge alt">辅源</span>
+        <h3>ReconX <code>routerProbe</code></h3>
+        <p>background 同步注入取返回值，无时序依赖、确定性高，且纯只读。</p>
+      </article>
+    </div>
+    <ol class="dual-logic">
+      <li><b>主源可用</b><span>以主源为准，辅源仍完整列出，仅作交叉核对。</span></li>
+      <li><b>主源不可用</b><span>辅源自动升为兜底主源，页面顶部写明已改用辅源。</span></li>
+      <li><b>两路分歧</b><span>逐项对照框架 / 路由库 / 条数差值 / 基础路径 / 推断路径，并附一张按路径合并的并表，标出每条路由被哪一路命中。</span></li>
+    </ol>
+  </section>
+
   <section id="features" class="block">
     <h2>功能清单</h2>
     <div class="grid two">
@@ -106,29 +129,6 @@
         </ul>
       </div>
     </div>
-  </section>
-
-  <section id="dual-source" class="block">
-    <h2>双源探测 · 不一致时不替你取舍</h2>
-    <p>框架与路由各走两条独立采集路径，同一站点常会给出不同结论。ReconX 不静默择一，而是并列呈现、写明主次，把判断权交回你手里。</p>
-    <div class="dual">
-      <article class="dual-card">
-        <span class="badge">主源</span>
-        <h3>King-CrackX <code>detector</code></h3>
-        <p>页面主世界全量分析，覆盖面更广，经消息桥异步回传。</p>
-      </article>
-      <div class="dual-mid"><span>不一致时</span><em>并列对照</em></div>
-      <article class="dual-card alt">
-        <span class="badge alt">辅源</span>
-        <h3>ReconX <code>routerProbe</code></h3>
-        <p>background 同步注入取返回值，无时序依赖、确定性高，且纯只读。</p>
-      </article>
-    </div>
-    <ol class="dual-logic">
-      <li><b>主源可用</b><span>以主源为准，辅源仍完整列出，仅作交叉核对。</span></li>
-      <li><b>主源不可用</b><span>辅源自动升为兜底主源，页面顶部写明已改用辅源。</span></li>
-      <li><b>两路分歧</b><span>逐项对照框架 / 路由库 / 条数差值 / 基础路径 / 推断路径，并附一张按路径合并的并表，标出每条路由被哪一路命中。</span></li>
-    </ol>
   </section>
 
   <section id="install" class="block">
