@@ -13,9 +13,21 @@
             <el-dropdown-item command="src">SRC 提交草稿</el-dropdown-item>
             <el-dropdown-item command="html">HTML 报告</el-dropdown-item>
             <el-dropdown-item command="txt">端点 TXT</el-dropdown-item>
+            <el-dropdown-item command="full" divided>综合报告 MD（含接管/路由/审计）</el-dropdown-item>
+            <el-dropdown-item command="all">全部格式批量导出</el-dropdown-item>
+            <el-dropdown-item v-if="extraBundles.length" command="multi" divided>聚合导出 MD（当前 + 已导入 {{ extraBundles.length }} 份）</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+      <el-select v-model="exportMinSeverity" size="small" style="width:120px" title="导出前按风险等级过滤（filterBundle）">
+        <el-option label="全等级" value="" />
+        <el-option label="中危及以上" value="medium" />
+        <el-option label="高危及以上" value="high" />
+        <el-option label="仅严重" value="critical" />
+      </el-select>
+      <el-button size="small" @click="pickBundles">导入 JSON</el-button>
+      <input ref="fileInput" type="file" accept=".json" multiple hidden @change="onFilesPicked" />
+      <span v-if="multiMsg" class="tip">{{ multiMsg }}</span>
       <el-button size="small" @click="copyRaw">复制原始 JSON</el-button>
     </header>
     <el-alert v-if="bundle.storageTruncated" type="warning" :closable="false" class="mb"
@@ -148,6 +160,7 @@
           </el-table>
           <template v-if="bundle.probes.routes && bundle.probes.routes.applicable">
             <h3>前端路由可达性（{{ bundle.probes.routes.framework }} · {{ bundle.probes.routes.routerKind }}）</h3>
+            <div class="tip">共拼接 {{ (bundle.probes.routes.routeFullUrls || []).length }} 条完整路由 URL，探测其中前 {{ (bundle.probes.routes.routeProbes || []).length }} 条；全量列表会写入「综合报告 MD」的路由完整 URL 章节。</div>
             <el-table :data="bundle.probes.routes.routeProbes || []" size="small">
               <el-table-column prop="path" label="路由" />
               <el-table-column prop="status" label="状态" width="80" />
@@ -216,12 +229,17 @@
         <el-tabs v-model="dorkTab" class="subtabs">
           <el-tab-pane label="Dork 语法" name="queries">
             <div class="bar" style="margin-bottom:8px">
+              <el-select v-model="dorkPkg" size="small" style="width:150px">
+                <el-option label="通用侦察包" value="general" />
+                <el-option label="教育行业包" value="edu" />
+              </el-select>
               <el-select v-model="dorkEngine" size="small" style="width:120px">
                 <el-option label="Google" value="google" />
                 <el-option label="Bing" value="bing" />
                 <el-option label="Baidu" value="baidu" />
               </el-select>
-              <span class="tip">共 {{ dorkItems.length }} 条</span>
+              <el-checkbox v-model="dorkHighOnly" size="small">仅高风险</el-checkbox>
+              <span class="tip">共 {{ dorkItems.length }} 条{{ userDorks[dorkPkg].length ? '（含自定义 ' + userDorks[dorkPkg].length + ' 条）' : '' }}</span>
             </div>
             <el-table :data="dorkItems" size="small">
               <el-table-column prop="category" label="类别" width="120" />
@@ -230,6 +248,14 @@
               <el-table-column label="查询语法"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
               <el-table-column label="" width="100"><template #default="{ row }"><el-button size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
             </el-table>
+            <h3>自定义 Dork 导入</h3>
+            <div class="tip">粘贴 JSON 数组（形如 [{'name':'后台探测','template':'site:{target_domain} inurl:admin','risk':'high'}]），校验通过后并入当前包并持久保存。</div>
+            <el-input v-model="dorkImportText" type="textarea" :rows="3" placeholder='[{"name":"...","template":"...","risk":"high"}]' style="margin-bottom:6px" />
+            <div class="bar">
+              <el-button size="small" @click="importDorks">校验并入当前包</el-button>
+              <el-button v-if="userDorks[dorkPkg].length" size="small" text type="danger" @click="clearUserDorks">清除本包自定义 {{ userDorks[dorkPkg].length }} 条</el-button>
+              <span v-if="dorkImportMsg" class="tip">{{ dorkImportMsg }}</span>
+            </div>
           </el-tab-pane>
 
           <el-tab-pane label="资产测绘（4 平台 × 4 模式）" name="asset">
@@ -269,11 +295,11 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
-import { exportBundle } from '../core/exporter'
+import { exportBundle, exportFullReport, exportMulti, parseJson } from '../core/exporter'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
 import Pager from './Pager.vue'
-import { listPackage, toSearchItems } from '../core/dork-library'
+import { listPackage, highRisk, mergeUser, validateImport, toSearchItems } from '../core/dork-library'
 import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
@@ -340,11 +366,13 @@ const routeMatrix = computed(() => {
 })
 
 onMounted(async () => {
-  const { lastBundle, settings, liveState } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState'])
+  const { lastBundle, settings, liveState, userDorks: ud } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks'])
   applyTheme(resolveTheme(settings && settings.theme))
   bundle.value = lastBundle || null
   live.value = liveState || { updatedAt: 0 }
   assetDomain.value = (lastBundle && lastBundle.meta && lastBundle.meta.host) || ''
+  if (ud && Array.isArray(ud.general)) userDorks.general = ud.general
+  if (ud && Array.isArray(ud.edu)) userDorks.edu = ud.edu
 })
 
 async function copyRaw(): Promise<void> {
@@ -362,14 +390,73 @@ async function copyRaw(): Promise<void> {
 }
 const dorkEngine = ref('google')
 const dorkTab = ref('queries')
+const dorkPkg = ref<'general' | 'edu'>('general')
+const dorkHighOnly = ref(false)
+const dorkImportText = ref('')
+const dorkImportMsg = ref('')
+/** 按包持久化的自定义 Dork（chrome.storage.local.userDorks，导入时经 validateImport 校验） */
+const userDorks = reactive<Record<string, any[]>>({ general: [], edu: [] })
+
+// 导出控制：等级过滤（filterBundle）+ 全量/多格式/聚合导出（exportFullReport/exportMulti）
+const exportMinSeverity = ref('')
+const extraBundles = ref<any[]>([])
+const multiMsg = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
 
 function onExport(fmt: string): void {
-  if (bundle.value) exportBundle(bundle.value, fmt)
+  if (!bundle.value) return
+  const opts = exportMinSeverity.value ? { minSeverity: exportMinSeverity.value } : undefined
+  if (fmt === 'full') exportFullReport(bundle.value, (bundle.value.meta && bundle.value.meta.url) || '')
+  else if (fmt === 'all') exportBundle(bundle.value, ['json', 'csv', 'md', 'src', 'html', 'txt'], opts)
+  else if (fmt === 'multi') exportMulti([bundle.value, ...extraBundles.value], 'md')
+  else exportBundle(bundle.value, fmt, opts)
+}
+function pickBundles(): void {
+  fileInput.value?.click()
+}
+async function onFilesPicked(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  const ok: any[] = []
+  const bad: string[] = []
+  for (const f of files) {
+    // parseJson：安全解析，非法 JSON 只标记失败文件不中断导入
+    const parsed = parseJson(await f.text())
+    if (parsed.ok && parsed.data && parsed.data.meta) ok.push(parsed.data)
+    else bad.push(f.name)
+  }
+  extraBundles.value = extraBundles.value.concat(ok)
+  multiMsg.value = '已导入 ' + ok.length + ' 份结果' + (bad.length ? '，失败：' + bad.join('、') : '')
+  input.value = ''
+}
+
+function importDorks(): void {
+  const parsed = parseJson(dorkImportText.value)
+  if (!parsed.ok) { dorkImportMsg.value = 'JSON 解析失败：' + parsed.error; return }
+  const v = validateImport(parsed.data)
+  if (!v.ok) { dorkImportMsg.value = '校验失败：' + v.error + '（顶层需为含 name/template 的数组）'; return }
+  userDorks[dorkPkg.value] = v.data || parsed.data
+  chrome.storage.local.set({ userDorks: { general: userDorks.general, edu: userDorks.edu } })
+  dorkImportMsg.value = '已并入「' + (dorkPkg.value === 'edu' ? '教育行业包' : '通用侦察包') + '」' + v.count + ' 条并保存'
+  dorkImportText.value = ''
+}
+function clearUserDorks(): void {
+  userDorks[dorkPkg.value] = []
+  chrome.storage.local.set({ userDorks: { general: userDorks.general, edu: userDorks.edu } })
+  dorkImportMsg.value = '已清除本包自定义 Dork'
 }
 const dorkItems = computed(() => {
   const host = assetDomain.value.trim() || (bundle.value && bundle.value.meta && bundle.value.meta.host)
   if (!host) return []
-  return toSearchItems(listPackage('general'), host, dorkEngine.value)
+  const custom = userDorks[dorkPkg.value]
+  // 无自定义时高风险走 highRisk（内置包快路径），有自定义时 mergeUser 后统一过滤
+  let entries = custom.length
+    ? mergeUser(dorkPkg.value, custom)
+    : dorkHighOnly.value
+      ? highRisk(dorkPkg.value)
+      : listPackage(dorkPkg.value)
+  if (custom.length && dorkHighOnly.value) entries = entries.filter((e) => e.risk === 'high')
+  return toSearchItems(entries, host, dorkEngine.value)
 })
 const assetDomain = ref('')
 const assetKeyword = ref('')
