@@ -49,6 +49,12 @@
           </label>
           <p class="desc">同时向目标拉取 JS 的请求数，调高会明显增加目标负载。</p>
 
+          <div class="row">
+            <span class="lbl">链接采集黑名单（每行一条）</span>
+            <el-input v-model="blacklistText" type="textarea" :rows="3" placeholder="static.example.com&#10;*.cdn.net&#10;/analytics/" @change="applyBlacklist" />
+          </div>
+          <p class="desc">命中的链接不计入采集端点，采集结果概览会如实显示被跳过的条数。支持裸域、<code>*.</code> 通配域与 <code>/正则/</code> 三种写法；搜索引擎跳转链接无需填写，默认已被排除。</p>
+
           <div class="row action-row">
             <el-button size="small" text @click="restoreDefaults">恢复默认参数</el-button>
           </div>
@@ -90,10 +96,17 @@ import type { ScopeHost, Settings } from '../types'
 import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 import { applyTheme, resolveTheme } from '../shared/theme'
 
-const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' }
+const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [] }
 
 const hosts = ref<ScopeHost[]>([])
 const settings = reactive<Settings>({ ...DEFAULTS })
+// 黑名单在设置里是 string[]，界面用多行文本编辑，两者在此互转
+const blacklistText = ref('')
+
+function applyBlacklist(): Promise<void> {
+  settings.linkBlacklist = blacklistText.value.split('\n').map((s) => s.trim()).filter(Boolean)
+  return persist()
+}
 
 const fmt = (ts: number): string => new Date(ts).toLocaleString('zh-CN')
 
@@ -101,6 +114,7 @@ onMounted(async () => {
   const { scope, settings: s } = await chrome.storage.local.get(['scope', 'settings'])
   if (scope && Array.isArray(scope.hosts)) hosts.value = scope.hosts
   Object.assign(settings, { ...DEFAULTS }, s || {})
+  blacklistText.value = (settings.linkBlacklist || []).join('\n')
   applyTheme(resolveTheme(settings.theme))
 })
 
@@ -118,6 +132,7 @@ async function changeTheme(id: ThemeId): Promise<void> {
 async function restoreDefaults(): Promise<void> {
   const keep = settings.theme
   Object.assign(settings, { ...DEFAULTS, theme: keep })
+  blacklistText.value = ''
   await persist()
   ElMessage.success('已恢复默认参数')
 }

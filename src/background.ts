@@ -13,7 +13,7 @@ import { shrinkForStorage } from './core/storage-fallback'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
 
-const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark' }
+const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [] }
 
 // ---------------- 常驻 Content Script 注册（document_start 时机注入 all-in.js） ----------------
 const ALL_IN_SCRIPT_ID = 'reconx-all-in-script'
@@ -217,19 +217,25 @@ async function scanJs(scriptUrls: string[], inlineText: string, currentHost: str
 }
 
 // ---------------- 链接 / 端点归一 ----------------
-function buildLinks(payload: any, host: string): any {
+function buildLinks(payload: any, host: string, linkBlacklist?: string[]): any {
   // url-utils.toAbsolute：相对 base 解析 + 仅 http/https，与旧 norm() 语义一致
   const norm = (href: string): URL | null => UrlUtils.toAbsolute(href, payload.url)
+  const blacklist = UrlClassify.compileBlacklist(linkBlacklist || [])
   const seen = new Set<string>()
   const endpoints: any[] = []
   const paramCount = new Map<string, number>()
   const byHost = new Map<string, number>()
+  let engineSkipped = 0
+  let blacklistSkipped = 0
   function add(u: URL | null, ctx: string): void {
     if (!u) return
     u.hash = ''
     const key = u.href
     if (seen.has(key)) return
     seen.add(key)
+    // 搜索引擎跳转串与用户拉黑的地址都不是目标端点，跳过但要计数，避免界面把缺失当成"没采到"
+    if (UrlClassify.isEngineUrl(key)) { engineSkipped++; return }
+    if (UrlClassify.matchBlacklist(key, blacklist)) { blacklistSkipped++; return }
     const params = Array.from(u.searchParams.keys())
     params.forEach((p) => paramCount.set(p, (paramCount.get(p) || 0) + 1))
     byHost.set(u.hostname, (byHost.get(u.hostname) || 0) + 1)
@@ -244,6 +250,9 @@ function buildLinks(payload: any, host: string): any {
     total: endpoints.length,
     endpoints,
     sameOriginCount: endpoints.filter((e) => e.same).length,
+    engineSkipped,
+    blacklistSkipped,
+    blacklistRules: (linkBlacklist || []).length,
     byHost: Array.from(byHost.entries()).map(([h, c]) => ({ host: h, count: c })).sort((a, b) => b.count - a.count),
     params: Array.from(paramCount.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
     forms: payload.forms || []
@@ -441,7 +450,7 @@ async function collect(tabId: number): Promise<any> {
   const headerReport = HeaderChecks.analyze(headerPairs, isHttps)
   const resources = buildResources(payload)
   const js = await scanJs(resources.scripts.concat(payload.resourceUrls || []), payload.inlineScripts, host, scope.hosts.map((h) => h.host), settings)
-  const links = buildLinks(payload, host)
+  const links = buildLinks(payload, host, settings.linkBlacklist)
   const tech = buildTech(payload, headerReport, windowVars, resources)
   const waf = detectWaf(headerReport, payload.htmlEvidence || '')
 

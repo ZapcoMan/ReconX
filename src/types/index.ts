@@ -80,6 +80,8 @@ export interface Settings {
   maxJsFiles: number
   maxConcurrent: number
   theme: 'dark' | 'light' | 'geek'
+  /** 链接采集黑名单：裸域 / *.通配域 / 正则 /re/ 三种写法，解析见 url-classify.compileBlacklist */
+  linkBlacklist: string[]
 }
 
 export interface TechItem {

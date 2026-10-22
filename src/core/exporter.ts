@@ -2,13 +2,14 @@
 // 在扩展页面上下文（popup/result/options）通过 <a download> 触发下载；不依赖 chrome.downloads，纯 DOM。
 import { generateBundleReportMarkdown } from './security-report'
 import * as UrlUtils from './url-utils'
+import { SEVERITY_ORDER } from './sensitive-rules'
 import type { Severity } from '../types'
 
-export const ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } satisfies Partial<Record<Severity, number>>
+// 等级权重只有 sensitive-rules 一处定义，导出层不再自备副本
 export const SEV_CN = { critical: '严重', high: '高危', medium: '中危', low: '低危', info: '提示', warn: '需核验', safe: '安全' } satisfies Record<Severity, string>
 
 /** 安全取等级权重：字面量键表用 keyof 索引，未知等级排到末位，避免 any 下标静默返回 undefined */
-const rank = (s: unknown): number => ORDER[String(s) as keyof typeof ORDER] ?? 99
+const rank = (s: unknown): number => SEVERITY_ORDER[String(s) as keyof typeof SEVERITY_ORDER] ?? 99
 
 function esc(s: any): string {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -85,7 +86,7 @@ export function collectFindings(bundle: any): FindingItem[] {
 export function filterBundle(bundle: any, opts?: { minSeverity?: string; categories?: string[] }): any {
   const minRank = opts?.minSeverity ? rank(opts.minSeverity) : 99
   const keepCat = Array.isArray(opts?.categories) && opts!.categories!.length ? new Set(opts!.categories!) : null
-  const bySev = (s: string) => (s in ORDER ? rank(s) <= minRank : true)
+  const bySev = (s: string) => (s in SEVERITY_ORDER ? rank(s) <= minRank : true)
   // structuredClone（Chrome 98+）：原生深拷贝，不再依赖 JSON 可序列化性
   const out = structuredClone(bundle)
   if (out.js) {

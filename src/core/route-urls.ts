@@ -11,9 +11,6 @@ export function normalizeUrl(url: string): string {
   if (!url || typeof url !== 'string') return ''
   return cleanUrl(url.trim())
 }
-export function urlsEqual(l: string, r: string): boolean {
-  return normalizeUrl(l) === normalizeUrl(r)
-}
 
 export function normalizeBasePath(basePath: string | null | undefined): string {
   if (!basePath || typeof basePath !== 'string') return ''

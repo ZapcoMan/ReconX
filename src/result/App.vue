@@ -42,6 +42,10 @@
           <el-descriptions-item label="路由库（主源）">{{ primary.routerKind }}</el-descriptions-item>
           <el-descriptions-item label="端点总数">{{ (bundle.links && bundle.links.total) || 0 }}</el-descriptions-item>
           <el-descriptions-item label="同源端点">{{ (bundle.links && bundle.links.sameOriginCount) || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="链接过滤">
+            搜索引擎跳转 {{ (bundle.links && bundle.links.engineSkipped) || 0 }} 条 ·
+            黑名单 {{ (bundle.links && bundle.links.blacklistSkipped) || 0 }} 条（规则 {{ (bundle.links && bundle.links.blacklistRules) || 0 }} 条）
+          </el-descriptions-item>
         </el-descriptions>
         <h3>风险摘要</h3>
         <el-table :data="bundle.risks || []" size="small">
@@ -242,9 +246,9 @@
               <span class="tip">共 {{ dorkItems.length }} 条{{ userDorks[dorkPkg].length ? '（含自定义 ' + userDorks[dorkPkg].length + ' 条）' : '' }}</span>
             </div>
             <el-table :data="dorkItems" size="small">
-              <el-table-column prop="category" label="类别" width="120" />
+              <el-table-column label="类别" width="150"><template #default="{ row }">{{ dorkCategoryName(row.category) }}</template></el-table-column>
               <el-table-column prop="name" label="名称" width="160" />
-              <el-table-column prop="risk" label="风险" width="80" />
+              <el-table-column label="风险" width="80"><template #default="{ row }">{{ riskLabel(row.risk) }}</template></el-table-column>
               <el-table-column label="查询语法"><template #default="{ row }"><code>{{ row.query }}</code></template></el-table-column>
               <el-table-column label="" width="100"><template #default="{ row }"><el-button size="small" text @click="copyText(row.query)">复制语法</el-button></template></el-table-column>
             </el-table>
@@ -253,9 +257,18 @@
             <el-input v-model="dorkImportText" type="textarea" :rows="3" placeholder='[{"name":"...","template":"...","risk":"high"}]' style="margin-bottom:6px" />
             <div class="bar">
               <el-button size="small" @click="importDorks">校验并入当前包</el-button>
+              <el-button v-if="userDorks[dorkPkg].length" size="small" @click="exportUserDorks">导出本包自定义备份</el-button>
               <el-button v-if="userDorks[dorkPkg].length" size="small" text type="danger" @click="clearUserDorks">清除本包自定义 {{ userDorks[dorkPkg].length }} 条</el-button>
               <span v-if="dorkImportMsg" class="tip">{{ dorkImportMsg }}</span>
             </div>
+
+            <h3>行业全局查询（{{ GLOBAL_QUERIES.length }} 条，不限定当前域）</h3>
+            <div class="tip">这些语法面向整个 edu.cn 域段，不随当前目标域名替换，适合行业面排查而非单点定位。</div>
+            <el-table :data="GLOBAL_QUERIES" size="small">
+              <el-table-column prop="name" label="名称" width="180" />
+              <el-table-column label="查询语法"><template #default="{ row }"><code>{{ row.template }}</code></template></el-table-column>
+              <el-table-column label="" width="100"><template #default="{ row }"><el-button size="small" text @click="copyText(row.template)">复制语法</el-button></template></el-table-column>
+            </el-table>
           </el-tab-pane>
 
           <el-tab-pane label="资产测绘（4 平台 × 4 模式）" name="asset">
@@ -295,11 +308,12 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, toRaw } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
-import { exportBundle, exportFullReport, exportMulti, filterBundle, parseJson } from '../core/exporter'
+import { exportBundle, exportFullReport, exportMulti, filterBundle, parseJson, exportJson } from '../core/exporter'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
 import Pager from './Pager.vue'
-import { listPackage, highRisk, mergeUser, validateImport, toSearchItems } from '../core/dork-library'
+import { listPackage, highRisk, mergeUser, validateImport, toSearchItems, CATEGORY_META, GLOBAL_QUERIES } from '../core/dork-library'
+import { riskLabel } from '../core/sensitive-rules'
 import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
@@ -396,6 +410,11 @@ const dorkImportText = ref('')
 const dorkImportMsg = ref('')
 /** 按包持久化的自定义 Dork（chrome.storage.local.userDorks，导入时经 validateImport 校验） */
 const userDorks = reactive<Record<string, any[]>>({ general: [], edu: [] })
+
+const DORK_CATEGORY = Object.fromEntries(CATEGORY_META.map((c) => [c.id, c.name])) as Record<string, string>
+// 库内类别是英文 id，界面显示中文名；自定义条目的未知 id 原样返回
+function dorkCategoryName(id: string): string { return DORK_CATEGORY[id] || id }
+function exportUserDorks(): void { exportJson(toRaw(userDorks[dorkPkg.value]), 'reconx-dorks-' + dorkPkg.value) }
 
 // 导出控制：等级过滤（filterBundle）+ 全量/多格式/聚合导出（exportFullReport/exportMulti）
 const exportMinSeverity = ref('')
