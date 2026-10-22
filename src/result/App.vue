@@ -135,6 +135,14 @@
           <el-table-column label="来源"><template #default="{ row }">{{ (row.sources || []).join(', ') }}</template></el-table-column>
         </el-table>
         <Pager v-model:page="pg.apiStatic.page" v-model:size="pg.apiStatic.size" :total="((bundle.api && bundle.api.staticApis) || []).length" />
+        <h3>推断的后端基址（axios baseURL / env / JS 内出现域名，共 {{ ((bundle.js && bundle.js.baseUrls) || []).length }} 条）</h3>
+        <el-table v-if="bundle.js && bundle.js.baseUrls && bundle.js.baseUrls.length" :data="bundle.js.baseUrls" size="small">
+          <el-table-column prop="value" label="基址" />
+          <el-table-column prop="kind" label="类型" width="90" />
+          <el-table-column label="跨域" width="70"><template #default="{ row }">{{ isCrossOrigin(row.value) ? '是' : '否' }}</template></el-table-column>
+          <el-table-column label="来源"><template #default="{ row }">{{ (row.sources || []).join(', ') }}</template></el-table-column>
+        </el-table>
+        <div v-else class="empty">未从 JS 中推断出后端基址。</div>
       </el-tab-pane>
 
       <el-tab-pane label="安全" name="security">
@@ -344,6 +352,10 @@ const liveApiStats = computed(() => {
   }
 })
 const liveErrors = computed<Array<[string, string]>>(() => Object.entries((live.value.errors || {}) as Record<string, string>))
+// 后端基址是否跨域：value 的 host 与当前采集主机不同即为跨域（潜在外部后端/第三方）
+function isCrossOrigin(value: string): boolean {
+  try { return new URL(value).hostname !== ((bundle.value && bundle.value.meta && bundle.value.meta.host) || '') } catch { return false }
+}
 
 // 长表分页：仅用于行数随站点规模增长的表，固定长度的表直接全量展示
 const pg = reactive<Record<string, { page: number; size: number }>>({

@@ -98,6 +98,32 @@ export interface StaticApiItem {
   called: boolean
 }
 
+/**
+ * 运行时后端基址推断：从 JS 文本里挖出 axios baseURL、构建期注入的 env 基址，
+ * 以及字符串中出现的完整 http(s) 地址的 origin。用于定位跨域后端/第三方服务。
+ * 纯静态分析，不发起任何请求；origin 去重与"是否跨域"判定交由调用方按当前 host 过滤。
+ */
+export interface BaseUrlHit { value: string; kind: 'baseURL' | 'env' | 'origin'; source: string }
+
+export function extractBaseUrls(text: string, sourceLabel: string): BaseUrlHit[] {
+  const out: BaseUrlHit[] = []
+  if (!text) return out
+  const push = (v: string, kind: BaseUrlHit['kind']): void => { if (v && v.length <= 300) out.push({ value: v, kind, source: sourceLabel }) }
+  let m: RegExpExecArray | null
+  // 显式 baseURL 赋值：baseURL: "..." / base_url = '...' / baseUrl:"..."
+  const baseRe = /base[_-]?url["']?\s*[:=]\s*["'`]([^"'`\s]+)["'`]/gi
+  while ((m = baseRe.exec(text)) !== null) push(m[1], 'baseURL')
+  // 构建期 env 基址：VITE_/VUE_APP_/REACT_APP_ 前缀且名字含 API/BASE/HOST/DOMAIN/SERVER
+  const envRe = /(?:VITE_|VUE_APP_|REACT_APP_|NEXT_PUBLIC_)[A-Z0-9_]*(?:API|BASE|HOST|DOMAIN|SERVER|BACKEND)[A-Z0-9_]*["']?\s*[:=]\s*["'`]([^"'`\s]+)["'`]/gi
+  while ((m = envRe.exec(text)) !== null) push(m[1], 'env')
+  // 字符串里出现的完整 http(s) 地址 → 取其 origin 作为候选后端域
+  const urlRe = /["'`](https?:\/\/[A-Za-z0-9.\-]+(?::\d+)?(?:\/[^\s"'`]*)?)["'`]/gi
+  while ((m = urlRe.exec(text)) !== null) {
+    try { push(new URL(m[1]).origin, 'origin') } catch { /* 非法 URL 跳过 */ }
+  }
+  return out
+}
+
 export function finalize(endpoints: EndpointsAccumulator, livePathnames: string[] | null | undefined, origin: string): StaticApiItem[] {
   const list = Object.keys(endpoints).map((path) => ({
     path,

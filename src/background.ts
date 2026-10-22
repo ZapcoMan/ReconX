@@ -222,6 +222,15 @@ async function limit<T, R>(items: T[], n: number, fn: (it: T) => Promise<R>): Pr
 // ---------------- 扫描 JS（敏感信息 + 端点 + sourcemap） ----------------
 async function scanJs(scriptUrls: string[], inlineText: string, settings: Settings): Promise<any> {
   const endpoints: ApiExtract.EndpointsAccumulator = Object.create(null)
+  // 后端基址累加器：按值去重，记录类型（baseURL/env/origin）与来源文件
+  const baseUrlAcc: Record<string, { value: string; kind: string; sources: string[] }> = Object.create(null)
+  const addBase = (hits: ApiExtract.BaseUrlHit[]): void => {
+    for (const h of hits) {
+      if (!baseUrlAcc[h.value]) baseUrlAcc[h.value] = { value: h.value, kind: h.kind, sources: [] }
+      const e = baseUrlAcc[h.value]
+      if (e.sources.indexOf(h.source) < 0 && e.sources.length < 5) e.sources.push(h.source)
+    }
+  }
   const shortSource = UrlUtils.filenameOf
   const uniq: string[] = []
   const seen = new Set<string>()
@@ -240,12 +249,14 @@ async function scanJs(scriptUrls: string[], inlineText: string, settings: Settin
     const r = await fetchText(u)
     const findings = r.ok && r.text ? SensitiveRules.scanText(r.text, u, { extraPatterns }) : []
     if (r.ok && r.text) ApiExtract.extractFromText(r.text, endpoints, shortSource(u))
+    if (r.ok && r.text) addBase(ApiExtract.extractBaseUrls(r.text, shortSource(u)))
     const maps = r.ok && r.text ? (r.text.match(/[#@]sourceMappingURL=([^\s'"]+)/g) || []).map((s: string) => s.replace(/[#@]sourceMappingURL=/, '')) : []
     return { url: u, status: r.status, ok: r.ok, skipped: !!r.skipped, error: r.error, size: r.size, findings, maps }
   })
   const inlineFindings = inlineText ? SensitiveRules.scanText(inlineText, 'inline', { extraPatterns }) : []
   if (inlineText) ApiExtract.extractFromText(inlineText, endpoints, 'inline')
-  return { scanned: results.map((r) => ({ url: r.url, status: r.status, ok: r.ok, skipped: r.skipped, size: r.size, error: r.error })), findings: results.flatMap((r) => r.findings), inlineFindings, sourcemaps: results.flatMap((r) => r.maps.map((m: string) => ({ from: r.url, map: m }))), endpoints }
+  if (inlineText) addBase(ApiExtract.extractBaseUrls(inlineText, 'inline'))
+  return { scanned: results.map((r) => ({ url: r.url, status: r.status, ok: r.ok, skipped: r.skipped, size: r.size, error: r.error })), findings: results.flatMap((r) => r.findings), inlineFindings, sourcemaps: results.flatMap((r) => r.maps.map((m: string) => ({ from: r.url, map: m }))), endpoints, baseUrls: Object.values(baseUrlAcc) }
 }
 
 // ---------------- 链接 / 端点归一 ----------------
@@ -562,7 +573,7 @@ async function collect(tabId: number): Promise<any> {
     links,
     resources: { scripts: resources.scripts.length, css: resources.css.length, images: resources.images.length, fonts: resources.fonts.length, data: resources.data.length, other: resources.other.length, scriptsList: resources.scripts.slice(0, 200) },
     tech, waf, headers: headerReport,
-    js: { scanned: js.scanned, findings: js.findings, inlineFindings: js.inlineFindings, sourcemaps: js.sourcemaps },
+    js: { scanned: js.scanned, findings: js.findings, inlineFindings: js.inlineFindings, sourcemaps: js.sourcemaps, baseUrls: js.baseUrls },
     probes: { performed: false },
     risks: buildRisks(headerReport, js)
   }

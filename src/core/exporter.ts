@@ -166,6 +166,10 @@ export function toMarkdown(b: any): string {
     L.push('## 端点与参数')
     L.push('- 端点总数 ' + b.links.total + '，同源 ' + b.links.sameOriginCount)
     ;(b.links.params || []).slice(0, 40).forEach((p: any) => L.push('  - 参数 `' + p.name + '` ×' + p.count))
+    if (b.js && b.js.baseUrls && b.js.baseUrls.length) {
+      L.push('- 推断的后端基址（axios baseURL / env / JS 内域名）：')
+      b.js.baseUrls.slice(0, 30).forEach((u: any) => L.push('  - `' + u.value + '`（' + u.kind + '｜来源 ' + (u.sources || []).join(', ') + '）'))
+    }
     L.push('')
   }
   if (b.probes && b.probes.performed) {
