@@ -141,64 +141,117 @@ export function isPublicPath(path: string): boolean {
 export interface RoutePermissionReport {
   path: string
   name?: string
+  /** meta 中"值为真"的鉴权声明键，如 requiresAuth: true */
   hasAuth: boolean
   authKeys: string[]
+  /** meta 中明确声明为假的鉴权键，如 requiresAuth: false。旧实现只看键名，把它当成"有保护"，是漏报 */
+  authDisabledKeys: string[]
   hasRoles: boolean
   roles?: string[]
   hasPermissions: boolean
   permissions?: string[]
+  /** 路径属于预期公开页（登录、协议、帮助、支付回跳、OAuth 回调等） */
+  expectedPublic: boolean
+  /** 是否不必作为"未授权访问"风险统计（有有效鉴权声明、或本就预期公开） */
   isProtected: boolean
   riskLevel: string
+  /** 结论 + 判定依据 + 人工核验提示，所有等级都带依据，避免高危文案听起来像定论 */
   riskDescription: string
+}
+
+const AUTH_KEY_RE = /(auth|needlogin|requireslogin|islogin|logged)/i
+const ROLE_KEY_RE = /role/i
+const PERM_KEY_RE = /(perm|privilege|authority)/i
+
+/** 特权路径的等级映射：删除/支付/管理类为 critical，用户与权限类为 high */
+function privilegedRisk(cat: SensitiveCategory): string {
+  return ['管理接口', '删除操作', '支付财务'].indexOf(cat.category) >= 0 ? 'critical' : 'high'
 }
 
 export function analyzeRoutePermission(route: RouteEntry): RoutePermissionReport {
   const meta = (route.meta || {}) as Record<string, any>
   const authKeys: string[] = []
-  let hasRoles = false
+  const authDisabledKeys: string[] = []
   let roles: string[] | undefined
-  let hasPermissions = false
   let permissions: string[] | undefined
-  for (const kv of Object.entries(meta)) {
-    const key = kv[0]
-    const value = kv[1]
-    const lk = key.toLowerCase()
-    if (lk.indexOf('auth') >= 0 || lk === 'requiresauth' || lk === 'needlogin') authKeys.push(key)
-    if (lk.indexOf('role') >= 0) {
-      hasRoles = true
-      roles = Array.isArray(value) ? value.map(String) : typeof value === 'string' ? [value] : roles
+
+  for (const key of Object.keys(meta)) {
+    const value = meta[key]
+    // meta.author 是文章作者，不是鉴权声明
+    if (key.toLowerCase() === 'author') continue
+    if (AUTH_KEY_RE.test(key)) {
+      if (truthyMetaValue(value)) authKeys.push(key)
+      else authDisabledKeys.push(key)
     }
-    if (lk.indexOf('perm') >= 0) {
-      hasPermissions = true
-      permissions = Array.isArray(value) ? value.map(String) : typeof value === 'string' ? [value] : permissions
+    if (ROLE_KEY_RE.test(key) && truthyMetaValue(value)) {
+      roles = (roles || []).concat(Array.isArray(value) ? value.map(String) : typeof value === 'string' ? [value] : ['(已声明)'])
+    }
+    if (PERM_KEY_RE.test(key) && truthyMetaValue(value)) {
+      permissions = (permissions || []).concat(Array.isArray(value) ? value.map(String) : typeof value === 'string' ? [value] : ['(已声明)'])
     }
   }
+
   const hasAuth = authKeys.length > 0
-  const isProtected = hasAuth || hasRoles || hasPermissions
-  let riskLevel: string, riskDescription: string
-  if (!isProtected) {
-    const p = (route.path || '').toLowerCase()
-    if (p.indexOf('admin') >= 0 || p.indexOf('manage') >= 0 || p.indexOf('sys') >= 0) {
-      riskLevel = 'critical'
-      riskDescription = '管理相关路由缺少权限保护'
-    } else if (p.indexOf('user') >= 0 || p.indexOf('profile') >= 0 || p.indexOf('account') >= 0) {
-      riskLevel = 'high'
-      riskDescription = '用户相关路由缺少权限保护'
-    } else if (p.indexOf('pay') >= 0 || p.indexOf('order') >= 0 || p.indexOf('bill') >= 0) {
-      riskLevel = 'critical'
-      riskDescription = '支付相关路由缺少权限保护'
+  const hasRoles = !!roles && roles.length > 0
+  const hasPermissions = !!permissions && permissions.length > 0
+  const expectedPublic = isPublicPath(route.path || '')
+  const privileged = privilegedCategory(route.path || '')
+  const privWord = privileged ? matchPathWord(route.path || '', privileged.keywords) : null
+  const need = '（线索，需人工确认服务端是否同样放行）'
+
+  let isProtected: boolean
+  let riskLevel: string
+  let riskDescription: string
+
+  if (authDisabledKeys.length && privileged) {
+    // 明确声明不用登录 + 路径本身是特权特征，这才是真正值得跟进的组合，而不是靠"没有键"猜
+    isProtected = false
+    riskLevel = privilegedRisk(privileged!)
+    riskDescription = `meta 显式声明无需登录（${authDisabledKeys.join('/')} 为假），而路径命中「${privileged!.category}」特征（${privWord}）${need}`
+  } else if (hasAuth || hasRoles || hasPermissions) {
+    isProtected = true
+    if (hasAuth && !hasRoles && !hasPermissions) {
+      riskLevel = 'low'
+      riskDescription = `已声明鉴权（${authKeys.join('/')}），未见角色/权限细分${need}`
     } else {
-      riskLevel = 'medium'
-      riskDescription = '路由缺少权限保护，可能存在未授权访问（仅为线索，需授权后人工核验）'
+      riskLevel = 'safe'
+      riskDescription = '已声明鉴权与角色/权限要求'
     }
-  } else if (hasAuth && !hasRoles && !hasPermissions) {
-    riskLevel = 'low'
-    riskDescription = '仅有基础认证保护，缺少细粒度权限控制'
+  } else if (authDisabledKeys.length) {
+    isProtected = true
+    riskLevel = 'info'
+    riskDescription = `meta 声明无需登录（${authDisabledKeys.join('/')} 为假），路径无特权特征，视为公开页`
+  } else if (expectedPublic) {
+    isProtected = true
+    riskLevel = 'info'
+    riskDescription = '登录/协议/回跳类预期公开页，未配鉴权属正常'
+  } else if (privileged) {
+    isProtected = false
+    riskLevel = privilegedRisk(privileged!)
+    riskDescription = `路径命中「${privileged!.category}」特征（${privWord}），但 meta 无任何鉴权声明${need}`
   } else {
-    riskLevel = 'safe'
-    riskDescription = '路由权限配置完整'
+    // meta 里什么都没写不算证据：Vue/React 项目普遍用全局 beforeEach 做鉴权、路由 meta 留空是常态。
+    // 因此这类只记 low（不进风险计数），避免把每个普通页面都堆成 medium 线索。
+    isProtected = false
+    riskLevel = 'low'
+    riskDescription = 'meta 无鉴权声明、路径也无特权特征，多数情况由全局守卫统一保护' + need
   }
-  return { path: route.path || '', name: route.name, hasAuth, authKeys, hasRoles, roles, hasPermissions, permissions, isProtected, riskLevel, riskDescription }
+
+  return {
+    path: route.path || '',
+    name: route.name,
+    hasAuth,
+    authKeys,
+    authDisabledKeys,
+    hasRoles,
+    roles,
+    hasPermissions,
+    permissions,
+    expectedPublic,
+    isProtected,
+    riskLevel,
+    riskDescription
+  }
 }
 
 export interface SourceMapRisk {
@@ -238,7 +291,11 @@ export function performSecurityAudit(params: AuditParams): Record<string, any> {
   ;(params.liveApis || []).forEach((a) => sensitiveApis.push.apply(sensitiveApis, detectSensitiveApi(a.url || (a as any).path, a.url || (a as any).path, 'live')))
   ;(params.staticApis || []).forEach((a) => sensitiveApis.push.apply(sensitiveApis, detectSensitiveApi(a.path, a.fullUrl || a.path, 'static')))
   const routePermissions = (params.routes || []).map(analyzeRoutePermission)
-  const unauthorizedRoutes = routePermissions.filter((r) => !r.isProtected)
+  // 只把"确实需要人工看一眼"的路径算进风险数：登录页、协议页这类预期公开页
+  // 以前也计入 unprotectedRoutes，而它直接驱动 overallRisk（>2 即 high），
+  // 等于任何 SPA 只要路由多几个就自动被判高风险
+  const RISK_LEVELS = ['critical', 'high', 'medium']
+  const unauthorizedRoutes = routePermissions.filter((r) => RISK_LEVELS.indexOf(r.riskLevel) >= 0)
   const sourceMapRisks = analyzeSourceMapRisks(params.sourceMaps)
 
   const criticalCount = sensitiveApis.filter((a) => a.riskLevel === 'critical').length
@@ -246,7 +303,9 @@ export function performSecurityAudit(params: AuditParams): Record<string, any> {
   const mediumCount = sensitiveApis.filter((a) => a.riskLevel === 'medium').length
   const lowCount = sensitiveApis.filter((a) => a.riskLevel === 'low').length
   const protectedRoutes = routePermissions.filter((r) => r.isProtected).length
-  const unprotectedRoutes = routePermissions.filter((r) => !r.isProtected).length
+  const unprotectedRoutes = unauthorizedRoutes.length
+  const publicRoutes = routePermissions.filter((r) => r.expectedPublic).length
+  const declaredPublicRoutes = routePermissions.filter((r) => r.authDisabledKeys.length > 0 && RISK_LEVELS.indexOf(r.riskLevel) < 0).length
   let overallRisk: string
   if (criticalCount > 0 || unprotectedRoutes > 5) overallRisk = 'critical'
   else if (highCount > 3 || unprotectedRoutes > 2) overallRisk = 'high'
@@ -267,6 +326,8 @@ export function performSecurityAudit(params: AuditParams): Record<string, any> {
       totalRoutes: routePermissions.length,
       protectedRoutes,
       unprotectedRoutes,
+      publicRoutes,
+      declaredPublicRoutes,
       sourceMapLeakCount: sourceMapRisks.length,
       overallRisk
     },
@@ -278,7 +339,8 @@ export function performSecurityAudit(params: AuditParams): Record<string, any> {
   }
   const rec: string[] = []
   if (criticalCount > 0) rec.push('发现高危敏感接口，建议检查这些接口的鉴权机制')
-  if (unprotectedRoutes > 0) rec.push('发现 ' + unprotectedRoutes + ' 个未受保护的路由（线索），建议授权后人工核验其守卫')
+  if (unprotectedRoutes > 0) rec.push('发现 ' + unprotectedRoutes + ' 个无鉴权声明的路由线索，建议授权后人工核验其全局守卫与服务端校验')
+  if (publicRoutes > 0 || declaredPublicRoutes > 0) rec.push('另有 ' + (publicRoutes + declaredPublicRoutes) + ' 个路由属预期公开或已显式声明无需登录，未计入风险')
   if (sourceMapRisks.length > 0) rec.push('生产环境不应暴露 Sourcemap，建议构建时禁用或限制访问')
   // 管理路由单独提示也要整词匹配，否则 /commander、/handadmin 之类杂词会把建议写成定论
   if (routePermissions.some((r) => !r.isProtected && matchPathWord(r.path, ['admin', 'administrator', 'superadmin', 'console', 'backend']) !== null)) rec.push('管理路由缺少权限保护，属严重隐患')

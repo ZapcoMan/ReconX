@@ -136,7 +136,7 @@
 
       <el-tab-pane label="安全" name="security">
         <template v-if="bundle.security">
-          <el-alert :title="'整体风险：' + bundle.security.summary.overallRisk + ' · 敏感API ' + bundle.security.summary.sensitiveApiCount + ' · 未保护路由 ' + bundle.security.summary.unprotectedRoutes" type="warning" :closable="false" />
+          <el-alert :title="'整体风险：' + riskLabel(bundle.security.summary.overallRisk) + ' · 敏感API ' + bundle.security.summary.sensitiveApiCount + ' · 待核验路由 ' + bundle.security.summary.unprotectedRoutes + ' · 预期公开 ' + (bundle.security.summary.publicRoutes || 0) + ' 条未计入'" type="warning" :closable="false" />
           <h3>敏感接口线索（共 {{ (bundle.security.sensitiveApis || []).length }} 条，全部保留可翻页查看）</h3>
           <el-table :data="paged('sensitive', bundle.security.sensitiveApis)" size="small">
             <el-table-column prop="category" label="类别" width="120" />

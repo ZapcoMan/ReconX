@@ -83,6 +83,10 @@ export interface FullReportData {
             totalRoutes: number
             protectedRoutes: number
             unprotectedRoutes: number
+            /** 登录/协议/回跳类预期公开路由数，不计入风险 */
+            publicRoutes?: number
+            /** meta 显式声明无需登录且无特权特征的路由数 */
+            declaredPublicRoutes?: number
             sourceMapLeakCount: number
         }
         sensitiveApis: Array<{
@@ -323,7 +327,9 @@ export function generateFullReportMarkdown(data: FullReportData): string {
         lines.push('| 低危 | ' + report.summary.lowCount + ' |')
         lines.push('| 路由总数 | ' + report.summary.totalRoutes + ' |')
         lines.push('| 已保护路由 | ' + report.summary.protectedRoutes + ' |')
-        lines.push('| 未保护路由 | ' + report.summary.unprotectedRoutes + ' |')
+        lines.push('| 待核验路由 | ' + report.summary.unprotectedRoutes + ' |')
+        // 公开页与已显式声明无需登录的路由单独报数，避免读报告的人以为它们被漏掉了
+        lines.push('| 预期公开/已声明公开路由 | ' + (report.summary.publicRoutes || 0) + ' + ' + (report.summary.declaredPublicRoutes || 0) + ' |')
         lines.push('| Sourcemap 泄露 | ' + report.summary.sourceMapLeakCount + ' |')
         lines.push('')
 

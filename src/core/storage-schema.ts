@@ -78,8 +78,3 @@ export async function runMigrations(store: StorageLike, migrations: Migration[] 
   }
   return { from: start, to: v, applied }
 }
-
-/** 这份 bundle 是不是迁移前写入的旧结构（缺 schema 字段一律按 v0 处理） */
-export function bundleSchemaVersion(bundle: any): number {
-  return readVersion(bundle && bundle.meta && bundle.meta.schema)
-}
