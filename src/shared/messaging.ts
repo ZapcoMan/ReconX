@@ -9,6 +9,8 @@ export interface LiveSnapshot {
   routerAnalysis?: any
   allInStatus?: any
   apiExtractResult?: any
+  /** API 提取实时进度文本（来自 api-extractor 的 PROGRESS 回传） */
+  apiProgress?: string
   errors?: Record<string, string>
   updatedAt?: number
 }

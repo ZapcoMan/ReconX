@@ -641,6 +641,9 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         enqueueLive((s) => { s.siteKey = siteKey; s.apiExtractResult = msg.result })
         break
       case 'reconxApiProgress':
+        // 进度不是错误：单独存 apiProgress 字段，并读 content 传来的 message（此前误并入 errors 且读 msg.result，文本恒丢失）
+        enqueueLive((s) => { s.siteKey = siteKey; s.apiProgress = msg.message })
+        break
       case 'reconxApiError':
       case 'reconxRouterAnalysisError':
       case 'reconxDetectorError':

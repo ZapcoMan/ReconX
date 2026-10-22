@@ -176,7 +176,7 @@
       </el-tab-pane>
 
       <el-tab-pane label="实时回传" name="live">
-        <div class="tip">本页数据由页面脚本（detector / api-extractor / all-in）实时回传，与采集结果分键存储。回传站点：<b>{{ live.siteKey || '未知' }}</b> · 最近更新：{{ liveTime }}</div>
+        <div class="tip">本页数据由页面脚本（detector / api-extractor / all-in）实时回传，与采集结果分键存储。回传站点：<b>{{ live.siteKey || '未知' }}</b> · 最近更新：{{ liveTime }}<span v-if="live.apiProgress"> · 进度：<b>{{ live.apiProgress }}</b></span></div>
 
         <h3>框架检测</h3>
         <el-descriptions v-if="live.frameworkDetection" :column="3" border size="small">
