@@ -34,7 +34,8 @@ export function computeExtras(ctx: ComputeExtrasContext): Record<string, any> {
     anchorFallback = routesList.length > 0
   }
   let routeBuild: any = { items: [], sectionTitle: '标准 URL', routerBase: null }
-  try { routeBuild = buildRouteUrlList({ routes: routesList, currentUrl: tab.url, routerBase: routerInfo.routerBase, detectedBasePath: null }) } catch { /* */ }
+  // 传入页面链接推断出的 base 路径，使 route-urls 的 base 模式分支真正可达
+  try { routeBuild = buildRouteUrlList({ routes: routesList, currentUrl: tab.url, routerBase: routerInfo.routerBase, detectedBasePath: (routerInfo.pageAnalysis && routerInfo.pageAnalysis.detectedBasePath) || null }) } catch { /* */ }
   const security = performSecurityAudit({ pageUrl: tab.url, liveApis, staticApis, routes: routesList, sourceMaps })
   let classified: any[] = []
   try { classified = rankItems(links.endpoints || []).filter((e) => e.level) } catch { /* */ }

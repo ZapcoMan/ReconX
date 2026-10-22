@@ -74,6 +74,8 @@ export interface BuildRouteUrlResult {
   trustedBasePath: string
   candidateBasePath: string
   availableBasePath: string
+  /** 生效的基础路径（collect-extras 读此字段回填 routes.routerBase，幻影字段落地） */
+  routerBase: string | null
   sectionTitle: string
   items: UrlItem[]
 }
@@ -125,6 +127,7 @@ export function buildRouteUrlList(params: BuildRouteUrlParams): BuildRouteUrlRes
     trustedBasePath,
     candidateBasePath,
     availableBasePath,
+    routerBase: availableBasePath || null,
     sectionTitle: mode === 'base' ? '带基础路径 URL：' + (trustedBasePath || candidateBasePath) : '标准 URL',
     items: mode === 'base' ? baseModeUrls : standardUrls
   }

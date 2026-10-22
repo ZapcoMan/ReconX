@@ -25,7 +25,8 @@ export async function probeRoutes(ctx: { routerInfo: RouterProbeResult; currentU
   const routes = ri.allRoutes && ri.allRoutes.length ? ri.allRoutes : []
   let built = { items: [] as Array<{ path?: string; url: string }>, sectionTitle: '标准 URL' }
   try {
-    built = buildRouteUrlList({ routes, currentUrl: ctx.currentUrl, routerBase: ri.routerBase, detectedBasePath: null })
+    // 同样传入辅源页面链接推断的 base，history 模式下带基础路径的站点才能拼对探测 URL
+    built = buildRouteUrlList({ routes, currentUrl: ctx.currentUrl, routerBase: ri.routerBase, detectedBasePath: (ri.pageAnalysis && ri.pageAnalysis.detectedBasePath) || null })
   } catch {
     /* ignore */
   }
@@ -60,5 +61,6 @@ export async function probeRoutes(ctx: { routerInfo: RouterProbeResult; currentU
     probes.push({ path: it.path || '', url: it.url, status, bytes, error: err })
     await new Promise((res) => setTimeout(res, 200))
   }
-  return { applicable: true, framework: fw, routerKind: ri.routerKind || null, routerDetected: !!ri.routerDetected, total: items.length, sectionTitle: built.sectionTitle, routeProbes: probes }
+  // routeFullUrls：全量拼接结果（不受探测 40 条上限约束），security-report 的「路由完整 URL」章节由此生效
+  return { applicable: true, framework: fw, routerKind: ri.routerKind || null, routerDetected: !!ri.routerDetected, total: items.length, sectionTitle: built.sectionTitle, routeFullUrls: built.items, routeProbes: probes }
 }
