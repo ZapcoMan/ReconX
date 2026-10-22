@@ -79,10 +79,6 @@ async function getSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get('settings')
   return Object.assign({}, DEFAULT_SETTINGS, settings || {})
 }
-async function inScope(host: string): Promise<boolean> {
-  const s = await getScope()
-  return s.hosts.some((h) => h.host === host)
-}
 
 // ---------------- 响应头缓存（来自 webRequest） ----------------
 // 缓存本体（TTL 过期、容量淘汰）在 HeadersCache 内；这里只负责「范围门」：
@@ -389,7 +385,7 @@ async function injectAllIn(tabId: number): Promise<{ ok: boolean; injected: bool
 }
 
 async function runProbes(origin: string, host: string, tabId?: number): Promise<any> {
-  if (!(await inScope(host))) return { ok: false, error: 'out_of_scope' }
+  // 1.0.0 去范围限制：探测不再要求 host 在允许域；仅保留 activeProbe 总开关与合法 origin 校验
   const probeSettings = await getSettings()
   if (!probeSettings.activeProbe) return { ok: false, error: 'probe_disabled' }
   // 探测目标必须是合法 http(s) origin，拒绝脏数据发起的请求
@@ -532,7 +528,7 @@ async function collect(tabId: number): Promise<any> {
   if (!pageUrl) return { ok: false, error: 'bad-url', hint: '当前页面 URL 不受支持。' }
   const host = pageUrl.hostname
   const isHttps = pageUrl.protocol === 'https:'
-  if (!(await inScope(host))) return { ok: false, error: 'out_of_scope', hint: '该主机不在允许域范围内：请先在弹窗把它加入范围并完成授权。', host }
+  // 1.0.0 去范围限制：采集不再要求 host 在允许域
   const scope = await getScope()
   const settings = await getSettings()
   let payload: any
@@ -678,7 +674,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         const live = await getLiveState()
         sendResponse({
           ok: true, scope, settings,
-          inScope: msg.host ? scope.hosts.some((h) => h.host === msg.host) : false,
+          inScope: true,
           hasCache: msg.host ? !!((readHeaders(msg.host) || { main: [] }).main.length) : false,
           lastBundle: lastBundle || null,
           live
