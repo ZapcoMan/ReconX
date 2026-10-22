@@ -33,6 +33,7 @@ async function registerAllInContentScript(): Promise<void> {
       id: ALL_IN_SCRIPT_ID,
       matches,
       js: ['all-in.js'],
+
       runAt: 'document_start',
       world: 'MAIN',
       allFrames: true
