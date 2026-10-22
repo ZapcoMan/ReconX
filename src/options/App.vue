@@ -15,8 +15,12 @@
     <section class="block">
       <div class="block-head"><h2>外观主题</h2><span class="hint">即时生效并记住，与弹窗、结果页共用</span></div>
       <div class="theme-bar">
-        <span class="sw"><i v-for="(c, i) in themeMeta.swatch" :key="i" :style="{ background: c }"></i></span>
-        <span class="tb-txt"><b>{{ themeMeta.label }}</b><em>{{ themeMeta.desc }}</em></span>
+        <span class="sw"><i v-for="(c, i) in swatch" :key="i" :style="{ background: c }"></i></span>
+        <span class="tb-txt">
+          <b>{{ themeMeta.label }}</b>
+          <em v-if="followSystem">当前生效：{{ effLabel }} · 系统换主题时这里会实时跟上</em>
+          <em v-else>{{ themeMeta.desc }}</em>
+        </span>
         <el-select :model-value="settings.theme" size="small" class="tb-sel" @change="changeTheme">
           <el-option v-for="id in THEME_ORDER" :key="id" :label="THEME_META[id].label" :value="id" />
         </el-select>
@@ -137,8 +141,8 @@ import { ref, reactive, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as M from '../shared/messaging'
 import type { ScopeHost, Settings } from '../types'
-import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
-import { applyTheme, resolveTheme } from '../shared/theme'
+import { THEME_ORDER, THEME_META, type ThemeId, type ConcreteThemeId } from '../core/themes'
+import { applyTheme, resolveTheme, effectiveTheme } from '../shared/theme'
 import { HISTORY_LIMIT, findInIndex, describeMeta, type BundleMeta } from '../core/bundle-store'
 import { parseJson, exportJson } from '../core/exporter'
 import { BUILTIN_PATTERN_COUNT, BUILTIN_PROBE_COUNT, validatePatternImport, validateProbeImport, toBackupPatterns } from '../core/user-rules'
@@ -150,6 +154,15 @@ const settings = reactive<Settings>({ ...DEFAULTS })
 // 黑名单在设置里是 string[]，界面用多行文本编辑，两者在此互转
 const blacklistText = ref('')
 const themeMeta = computed(() => THEME_META[settings.theme] || THEME_META.dark)
+const followSystem = computed(() => settings.theme === 'system')
+// 跟随系统时，色板与"当前生效"都按实际生效的那一档显示；下拉仍可随时选回任一具体主题
+const effTheme = ref<ConcreteThemeId>('dark')
+const swatch = computed(() => THEME_META[effTheme.value].swatch)
+const effLabel = computed(() => THEME_META[effTheme.value].label)
+
+function syncEffective(): void {
+  effTheme.value = effectiveTheme(settings.theme)
+}
 
 function applyBlacklist(): Promise<void> {
   settings.linkBlacklist = blacklistText.value.split('\n').map((s) => s.trim()).filter(Boolean)
@@ -245,6 +258,10 @@ onMounted(async () => {
   Object.assign(settings, { ...DEFAULTS }, s || {})
   blacklistText.value = (settings.linkBlacklist || []).join('\n')
   applyTheme(resolveTheme(settings.theme))
+  syncEffective()
+  try {
+    globalThis.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', syncEffective)
+  } catch { /* 无 matchMedia 的环境里静态显示即可 */ }
   patternText.value = JSON.stringify(toBackupPatterns(settings.userPatterns), null, 2)
   probeText.value = JSON.stringify(settings.userProbes, null, 2)
   // 历史列表要在页面打开时就拉一次，否则「采集历史」分区永远是空的
@@ -259,6 +276,7 @@ async function persist(): Promise<void> {
 async function changeTheme(id: ThemeId): Promise<void> {
   settings.theme = id
   applyTheme(id)
+  syncEffective()
   await persist()
 }
 

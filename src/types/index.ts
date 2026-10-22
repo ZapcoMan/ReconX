@@ -96,7 +96,8 @@ export interface Settings {
   activeProbe: boolean
   maxJsFiles: number
   maxConcurrent: number
-  theme: 'dark' | 'light' | 'geek'
+  /** 四档：三个具体主题 + 跟随系统（生效值由 prefers-color-scheme 决定，可实时切换回任一具体主题） */
+  theme: 'dark' | 'light' | 'geek' | 'system'
   /** 链接采集黑名单：裸域 / *.通配域 / 正则 /re/ 三种写法，解析见 url-classify.compileBlacklist */
   linkBlacklist: string[]
   /** 自定义密钥正则（正则源码 + flags），编译与校验见 core/user-rules */

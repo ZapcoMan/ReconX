@@ -1,7 +1,9 @@
-// 主题令牌与注册表（暗色 / 亮色 / 极客）。纯数据：每个主题是一组 CSS 自定义属性，
+// 主题令牌与注册表（暗色 / 亮色 / 极客 / 跟随系统）。纯数据：每个具体主题是一组 CSS 自定义属性，
 // 由 src/shared/theme.ts 注入到 :root，页面 scoped 样式消费 var(--rx-*)，
 // 并覆写 Element Plus 的关键变量使组件跟随主题。
-export type ThemeId = 'dark' | 'light' | 'geek'
+// system 本身没有令牌：它在应用时按 prefers-color-scheme 解析成 dark 或 light。
+export type ConcreteThemeId = 'dark' | 'light' | 'geek'
+export type ThemeId = ConcreteThemeId | 'system'
 
 export type CssVars = Record<string, string>
 
@@ -15,16 +17,17 @@ export interface ThemeMeta {
 const FONT_UI = "system-ui,'Microsoft YaHei',sans-serif"
 const FONT_GEEK = "'JetBrains Mono','Cascadia Code',Consolas,'Courier New',monospace"
 
-export const THEME_ORDER: ThemeId[] = ['dark', 'light', 'geek']
+export const THEME_ORDER: ThemeId[] = ['dark', 'light', 'geek', 'system']
 
 export const THEME_META: Record<ThemeId, ThemeMeta> = {
   dark: { id: 'dark', label: '暗色', desc: '低亮度深底高对比，适合长时间侦察', swatch: ['#0f1620', '#2dd4bf', '#e6edf3'] },
   light: { id: 'light', label: '亮色', desc: '明亮浅底，接近常规界面', swatch: ['#f5f7fa', '#0d9488', '#1f2937'] },
-  geek: { id: 'geek', label: '极客', desc: '终端绿 + 等宽字体 + 辉光，黑客风', swatch: ['#050807', '#00ff9c', '#3fae7a'] }
+  geek: { id: 'geek', label: '极客', desc: '终端绿 + 等宽字体 + 辉光，黑客风', swatch: ['#050807', '#00ff9c', '#3fae7a'] },
+  system: { id: 'system', label: '跟随系统', desc: '按系统 prefers-color-scheme 取暗色或亮色，系统切换时实时跟随', swatch: ['#0f1620', '#2dd4bf', '#f5f7fa'] }
 }
 
 // 每个主题的令牌：--rx-* 供本项目样式使用；--el-* 覆写 Element Plus 关键变量。
-export const THEME_TOKENS: Record<ThemeId, CssVars> = {
+export const THEME_TOKENS: Record<ConcreteThemeId, CssVars> = {
   dark: {
     '--rx-bg': '#0f1620',
     '--rx-bg-elev': '#16212e',
@@ -120,5 +123,9 @@ export const THEME_TOKENS: Record<ThemeId, CssVars> = {
 export const DEFAULT_THEME: ThemeId = 'dark'
 
 export function isThemeId(v: unknown): v is ThemeId {
+  return v === 'dark' || v === 'light' || v === 'geek' || v === 'system'
+}
+
+export function isConcreteThemeId(v: unknown): v is ConcreteThemeId {
   return v === 'dark' || v === 'light' || v === 'geek'
 }
