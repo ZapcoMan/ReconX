@@ -18,7 +18,11 @@ function escMd(s: any): string {
   return String(s == null ? '' : s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
 }
 function escCsv(s: any): string {
-  return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"'
+  let v = String(s == null ? '' : s)
+  // 防 CSV 公式注入（CWE-1236）：目标可控字段若以 = + - @ 或制表/回车开头，
+  // 在 Excel/WPS 打开导出 CSV 时会被当公式执行。前置单引号强制按文本处理。
+  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v
+  return '"' + v.replace(/"/g, '""') + '"'
 }
 function stamp(): string {
   const n = new Date()
