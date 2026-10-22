@@ -96,22 +96,6 @@
     </section>
 
     <section class="block">
-      <div class="block-head"><h2>允许域</h2><span class="hint">只有列在这里的主机可被采集与探测</span></div>
-      <el-table v-if="hosts.length" :data="hosts" size="small" class="hosts">
-        <el-table-column label="主机">
-          <template #default="{ row }"><span class="host">{{ row.host }}</span><span v-if="row.note" class="note">{{ row.note }}</span></template>
-        </el-table-column>
-        <el-table-column label="加入时间" width="150" class-name="mono"><template #default="{ row }">{{ fmt(row.addedAt) }}</template></el-table-column>
-        <el-table-column label="" width="72" align="right"><template #default="{ row }"><el-button size="small" text type="danger" @click="remove(row.host, row.origin)">移除</el-button></template></el-table-column>
-      </el-table>
-      <div v-else class="empty">尚无允许域。打开目标站点，点扩展图标里的「授权并加入范围」即可添加。</div>
-      <div class="warn-bar">
-        <div class="w-txt"><b>撤销全部主机权限</b><p>移除扩展已获得的全部站点访问权限。关闭「启用主动探测」会同时注销常驻接管脚本。</p></div>
-        <el-button size="small" type="danger" plain @click="revokeAll">撤销全部</el-button>
-      </div>
-    </section>
-
-    <section class="block">
       <div class="block-head"><h2>采集历史</h2><span class="hint">每次采集自动留一份，最多 {{ HISTORY_LIMIT }} 份，超出丢弃最旧</span></div>
       <el-table v-if="history.length" :data="history" size="small" class="hosts">
         <el-table-column label="采集时间" width="158"><template #default="{ row }"><span class="mono">{{ fmt(row.collectedAt) }}</span></template></el-table-column>
@@ -292,33 +276,6 @@ async function restoreDefaults(): Promise<void> {
   ElMessage.success('已恢复默认参数')
 }
 
-async function remove(host: string, origin: string): Promise<void> {
-  try {
-    await ElMessageBox.confirm(`将移除 ${host}，并撤销该站点的访问权限。`, '移除确认', { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' })
-  } catch { return }
-  // 走 background 消息路径，让允许域变更与常驻脚本注册保持同步
-  await M.removeHost(host, origin)
-  const { scope } = await chrome.storage.local.get('scope')
-  hosts.value = scope && Array.isArray(scope.hosts) ? scope.hosts : []
-  ElMessage.success('已移除 ' + host)
-}
-
-async function revokeAll(): Promise<void> {
-  try {
-    await ElMessageBox.confirm('将撤销扩展已获得的全部站点访问权限。', '撤销确认', { type: 'warning', confirmButtonText: '撤销全部', cancelButtonText: '取消' })
-  } catch { return }
-  try {
-    const all = await chrome.permissions.getAll()
-    if (all.origins && all.origins.length) {
-      await chrome.permissions.remove({ origins: all.origins })
-      ElMessage.success('已撤销 ' + all.origins.length + ' 个 host 权限')
-    } else {
-      ElMessage.info('当前没有已授予的 host 权限')
-    }
-  } catch (e: any) {
-    ElMessage.error('撤销失败：' + String((e && e.message) || e))
-  }
-}
 </script>
 
 <style scoped>
