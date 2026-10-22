@@ -49,10 +49,11 @@
   </section>
 
   <section class="notice">
-    <strong class="lead">使用前请先确认三件事。</strong>
+    <strong class="lead">使用前请先确认这几点。</strong>
     它<strong>不是只读工具</strong>：主动探测会向目标发出真实请求，接管功能会修改目标页面的前端路由运行时状态。
     接管<strong>只发生在客户端</strong>，服务端的 401/403 与数据级鉴权照样拦得住。
     所有命中都是<strong>启发式线索</strong>，存在误报，须人工确认。
+    命中与导出<strong>按原文留存</strong>（含密钥、Cookie 与响应头原值），数据只在本机不外传，但导出文件请谨慎分享。
     仅在你拥有或已获书面授权的资产上使用。
   </section>
 
@@ -85,9 +86,9 @@
         <ul class="ticks">
           <li>框架 / CMS / CDN / 边缘防护与版本线索识别</li>
           <li>安全头缺失、CSP 指令、CORS、<code>Set-Cookie</code>（HttpOnly / Secure / SameSite）风险</li>
-          <li>云密钥、Token、私钥、JWT、内网与元数据地址、Sourcemap、Git 痕迹扫描，命中默认掩码</li>
+          <li>云密钥、Token、私钥、JWT、内网与元数据地址、Sourcemap、Git 痕迹扫描，命中一律原文留存（不掩码，导出即取证材料）</li>
           <li>DOM 链接、表单与隐藏字段、iframe、运行时资源、内联 <code>/api</code> 端点，按主机与参数归一去重</li>
-          <li>URL 规范化：跳转还原、去跟踪参数、域名 / 通配 / 正则黑名单</li>
+          <li>URL 规范化：跳转还原、去跟踪参数、域名 / 通配 / 正则黑名单（设置页每行一条自定）</li>
           <li>端点三级敏感分级（critical / warn / info）并排序</li>
         </ul>
       </div>
@@ -97,7 +98,7 @@
           <li>识别 Vue（Router 2/3/4）与 React（React Router / TanStack / Next.js）并枚举全部路由，按 Hash / History / base 生成可点击的完整 URL</li>
           <li>API 端点三源提取：实际调用 + JS 源码静态正则 + Sourcemap 探测，标注未被调用的端点</li>
           <li>前端安全审计：敏感 API、未保护路由线索、Sourcemap 泄露 → 风险评级与修复建议</li>
-          <li>多格式统一导出：JSON / CSV / Markdown / HTML / SRC 提交草稿 / 端点 TXT（可直接贴 Burp）</li>
+          <li>多格式导出：JSON / CSV / Markdown / HTML / SRC 提交草稿 / 端点 TXT（可直接贴 Burp），可按风险等级过滤后导出，也可出综合报告或聚合多份既往结果</li>
           <li>结果页长表分页（10 / 50 / 100 / 500 每页），数据全量保留</li>
           <li>暗色 / 亮色 / 极客三套主题，联动 Element Plus 配色并持久化</li>
         </ul>
