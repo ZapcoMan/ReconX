@@ -505,8 +505,7 @@ async function collect(tabId: number): Promise<any> {
   if (!pageUrl) return { ok: false, error: 'bad-url', hint: '当前页面 URL 不受支持。' }
   const host = pageUrl.hostname
   const isHttps = pageUrl.protocol === 'https:'
-  // 1.0.0 去范围限制：采集不再要求 host 在允许域
-  const scope = await getScope()
+  // 1.0.0 去范围限制：采集不再要求 host 在允许域，也不再记录 inScope/scopeAddedAt
   const settings = await getSettings()
   let payload: any
   try { payload = await collectDom(tabId) } catch (e: any) { return { ok: false, error: 'inject-failed', hint: '页面注入失败（' + String((e && e.message) || e) + '）。刷新页面后重试。', host } }
@@ -533,7 +532,7 @@ async function collect(tabId: number): Promise<any> {
   const waf = detectWaf(headerReport, payload.htmlEvidence || '')
 
   const bundle: any = {
-    meta: { collectedAt: Date.now(), url: tab.url, title: payload.title, host, isHttps, inScope: true, scopeAddedAt: (scope.hosts.find((h) => h.host === host) || { addedAt: null }).addedAt, headerNote },
+    meta: { collectedAt: Date.now(), url: tab.url, title: payload.title, host, isHttps, headerNote },
     links,
     resources: { scripts: resources.scripts.length, css: resources.css.length, images: resources.images.length, fonts: resources.fonts.length, data: resources.data.length, other: resources.other.length, scriptsList: resources.scripts.slice(0, 200) },
     tech, waf, headers: headerReport,
