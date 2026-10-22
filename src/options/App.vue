@@ -1,95 +1,89 @@
 <template>
   <div class="opt">
-    <header class="page-head">
-      <div>
+    <header class="head">
+      <div class="head-txt">
         <h1>设置与范围管理</h1>
         <p class="sub">允许域决定 ReconX 能在哪些主机上工作；采集参数与主动探测开关决定它做多少事。</p>
       </div>
-      <div class="head-stat">
-        <div class="stat"><b>{{ hosts.length }}</b><span>允许域</span></div>
-        <div class="stat"><b :class="{ on: settings.activeProbe }">{{ settings.activeProbe ? '已开启' : '已关闭' }}</b><span>主动探测</span></div>
+      <div class="chips">
+        <span class="chip">允许域 <b>{{ hosts.length }}</b></span>
+        <span class="chip" :class="{ on: settings.activeProbe }">主动探测 <b>{{ settings.activeProbe ? '已开启' : '已关闭' }}</b></span>
+        <span class="chip">主题 <b>{{ themeMeta.label }}</b></span>
       </div>
     </header>
 
-    <div class="layout">
-      <section class="card">
-        <div class="card-head"><h2>外观主题</h2><span class="hint">即时生效并记住</span></div>
-        <div class="themes">
-          <button
-            v-for="id in THEME_ORDER" :key="id" type="button"
-            class="theme-card" :class="{ active: settings.theme === id }"
-            @click="changeTheme(id)"
-          >
-            <span class="dots"><i v-for="(c, i) in THEME_META[id].swatch" :key="i" :style="{ background: c }"></i></span>
-            <b>{{ THEME_META[id].label }}</b>
-            <span class="desc">{{ THEME_META[id].desc }}</span>
-            <span v-if="settings.theme === id" class="tick">使用中</span>
-          </button>
-        </div>
-      </section>
+    <section class="block">
+      <div class="block-head"><h2>外观主题</h2><span class="hint">即时生效并记住，与弹窗、结果页共用</span></div>
+      <div class="theme-bar">
+        <span class="sw"><i v-for="(c, i) in themeMeta.swatch" :key="i" :style="{ background: c }"></i></span>
+        <span class="tb-txt"><b>{{ themeMeta.label }}</b><em>{{ themeMeta.desc }}</em></span>
+        <el-select :model-value="settings.theme" size="small" class="tb-sel" @change="changeTheme">
+          <el-option v-for="id in THEME_ORDER" :key="id" :label="THEME_META[id].label" :value="id" />
+        </el-select>
+      </div>
+    </section>
 
-      <section class="card">
-        <div class="card-head"><h2>采集参数</h2><span class="hint">修改即时保存</span></div>
-        <div class="rows">
-          <label class="row switch-row">
-            <span class="lbl">启用主动探测</span>
-            <el-switch v-model="settings.activeProbe" @change="persist" />
-          </label>
-          <p class="desc">开启后才允许执行敏感路径与路由可达性探测，并把常驻接管脚本注册到允许域；关闭时弹窗的探测按钮不可用，已注册的脚本会被撤销。</p>
-
-          <label class="row">
-            <span class="lbl">最多扫描 JS 文件数</span>
-            <el-input-number v-model="settings.maxJsFiles" :min="1" :max="200" size="small" @change="persist" />
-          </label>
-          <p class="desc">单次采集拉取并分析的外链脚本上限，越大越慢、越容易碰到跨域失败。</p>
-
-          <label class="row">
-            <span class="lbl">并发抓取数</span>
-            <el-input-number v-model="settings.maxConcurrent" :min="1" :max="12" size="small" @change="persist" />
-          </label>
-          <p class="desc">同时向目标拉取 JS 的请求数，调高会明显增加目标负载。</p>
-
-          <div class="row">
-            <span class="lbl">链接采集黑名单（每行一条）</span>
-            <el-input v-model="blacklistText" type="textarea" :rows="3" placeholder="static.example.com&#10;*.cdn.net&#10;/analytics/" @change="applyBlacklist" />
+    <section class="block">
+      <div class="block-head"><h2>采集参数</h2><span class="hint">修改即时保存</span></div>
+      <div class="fields">
+        <div class="field">
+          <div class="f-txt">
+            <b>启用主动探测</b>
+            <p>开启后才允许执行敏感路径与路由可达性探测，并把常驻接管脚本注册到允许域；关闭时弹窗的探测按钮不可用，已注册的脚本会被撤销。</p>
           </div>
-          <p class="desc">命中的链接不计入采集端点，采集结果概览会如实显示被跳过的条数。支持裸域、<code>*.</code> 通配域与 <code>/正则/</code> 三种写法；搜索引擎跳转链接无需填写，默认已被排除。</p>
-
-          <div class="row action-row">
-            <el-button size="small" text @click="restoreDefaults">恢复默认参数</el-button>
-          </div>
+          <el-switch v-model="settings.activeProbe" @change="persist" />
         </div>
-      </section>
-
-      <section class="card wide">
-        <div class="card-head"><h2>允许域</h2><span class="hint">只有列在这里的主机可被采集与探测</span></div>
-        <el-table v-if="hosts.length" :data="hosts" size="small">
-          <el-table-column prop="host" label="主机"><template #default="{ row }"><code>{{ row.host }}</code></template></el-table-column>
-          <el-table-column prop="origin" label="来源"><template #default="{ row }"><code>{{ row.origin }}</code></template></el-table-column>
-          <el-table-column prop="note" label="备注" width="160" />
-          <el-table-column label="加入时间" width="180"><template #default="{ row }">{{ fmt(row.addedAt) }}</template></el-table-column>
-          <el-table-column label="操作" width="90"><template #default="{ row }"><el-button size="small" type="danger" text @click="remove(row.host, row.origin)">移除</el-button></template></el-table-column>
-        </el-table>
-        <div v-else class="empty">尚无允许域。打开目标站点，点扩展图标里的「授权并加入范围」即可添加。</div>
-        <div class="danger-zone">
-          <div>
-            <b>撤销全部主机权限</b>
-            <p class="desc">移除扩展已获得的站点访问权限。关闭上方的主动探测开关会同时注销常驻接管脚本。</p>
+        <div class="field">
+          <div class="f-txt">
+            <b>最多扫描 JS 文件数</b>
+            <p>单次采集拉取并分析的外链脚本上限，越大越慢、越容易碰到跨域失败。</p>
           </div>
-          <el-button size="small" type="danger" plain @click="revokeAll">撤销全部</el-button>
+          <el-input-number v-model="settings.maxJsFiles" :min="1" :max="200" size="small" controls-position="right" @change="persist" />
         </div>
-      </section>
+        <div class="field">
+          <div class="f-txt">
+            <b>并发抓取数</b>
+            <p>同时向目标拉取 JS 的请求数，调高会明显增加目标负载。</p>
+          </div>
+          <el-input-number v-model="settings.maxConcurrent" :min="1" :max="12" size="small" controls-position="right" @change="persist" />
+        </div>
+        <div class="field wide">
+          <div class="f-txt">
+            <b>链接采集黑名单</b>
+            <p>命中的链接不计入采集端点，采集结果概览会如实显示被跳过的条数。支持裸域、<code>*.</code> 通配域与 <code>/正则/</code> 三种写法；搜索引擎跳转链接无需填写，默认已被排除。</p>
+          </div>
+          <el-input v-model="blacklistText" type="textarea" :rows="3" class="f-area" placeholder="static.example.com&#10;*.cdn.net&#10;/analytics/" @change="applyBlacklist" />
+        </div>
+        <div class="foot-actions">
+          <el-button size="small" text @click="restoreDefaults">恢复默认参数</el-button>
+        </div>
+      </div>
+    </section>
 
-      <section class="card wide note-card">
-        <h2>合规声明</h2>
-        <p>ReconX 仅用于你拥有或已获书面授权的目标（渗透测试 / 漏洞赏金 / OSINT / 自查）。命中皆为线索，需人工确认。所有数据仅保存在本地浏览器，不外传。请遵守目标站点条款与当地法律。</p>
-      </section>
-    </div>
+    <section class="block">
+      <div class="block-head"><h2>允许域</h2><span class="hint">只有列在这里的主机可被采集与探测</span></div>
+      <el-table v-if="hosts.length" :data="hosts" size="small" class="hosts">
+        <el-table-column label="主机">
+          <template #default="{ row }"><span class="host">{{ row.host }}</span><span v-if="row.note" class="note">{{ row.note }}</span></template>
+        </el-table-column>
+        <el-table-column label="加入时间" width="150" class-name="mono"><template #default="{ row }">{{ fmt(row.addedAt) }}</template></el-table-column>
+        <el-table-column label="" width="72" align="right"><template #default="{ row }"><el-button size="small" text type="danger" @click="remove(row.host, row.origin)">移除</el-button></template></el-table-column>
+      </el-table>
+      <div v-else class="empty">尚无允许域。打开目标站点，点扩展图标里的「授权并加入范围」即可添加。</div>
+      <div class="warn-bar">
+        <div class="w-txt"><b>撤销全部主机权限</b><p>移除扩展已获得的全部站点访问权限。关闭「启用主动探测」会同时注销常驻接管脚本。</p></div>
+        <el-button size="small" type="danger" plain @click="revokeAll">撤销全部</el-button>
+      </div>
+    </section>
+
+    <footer class="legal">
+      ReconX 仅用于你拥有或已获书面授权的目标（渗透测试 / 漏洞赏金 / OSINT / 自查）。命中皆为线索，需人工确认，且一律以原文留存并进入导出文件。所有数据仅保存在本机浏览器，不外传。请遵守目标站点条款与当地法律。
+    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as M from '../shared/messaging'
 import type { ScopeHost, Settings } from '../types'
@@ -102,6 +96,7 @@ const hosts = ref<ScopeHost[]>([])
 const settings = reactive<Settings>({ ...DEFAULTS })
 // 黑名单在设置里是 string[]，界面用多行文本编辑，两者在此互转
 const blacklistText = ref('')
+const themeMeta = computed(() => THEME_META[settings.theme] || THEME_META.dark)
 
 function applyBlacklist(): Promise<void> {
   settings.linkBlacklist = blacklistText.value.split('\n').map((s) => s.trim()).filter(Boolean)
@@ -167,46 +162,60 @@ async function revokeAll(): Promise<void> {
 </script>
 
 <style scoped>
-.opt { max-width: 1040px; margin: 0 auto; padding: 26px 22px 60px; font: 14px/1.65 var(--rx-font); color: var(--rx-text); }
-.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--rx-border); }
-h1 { margin: 0 0 6px; font-family: var(--rx-font-head); font-size: 21px; color: var(--rx-accent); text-shadow: var(--rx-glow); }
-.sub { margin: 0; color: var(--rx-muted); font-size: 13px; max-width: 62ch; }
-.head-stat { display: flex; gap: 10px; }
-.stat { min-width: 96px; padding: 8px 14px; background: var(--rx-bg-elev); border: 1px solid var(--rx-border); border-radius: 8px; display: flex; flex-direction: column; }
-.stat b { font-size: 16px; color: var(--rx-accent); }
-.stat b.on { color: var(--rx-warn); }
-.stat span { font-size: 11.5px; color: var(--rx-muted); }
-.layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 20px; align-items: start; }
-.card { background: var(--rx-bg-elev); border: 1px solid var(--rx-border); border-radius: 12px; padding: 16px 18px 18px; }
-.card.wide { grid-column: 1 / -1; }
-.card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-h2 { margin: 0; font-size: 14.5px; letter-spacing: .3px; }
-.hint { color: var(--rx-muted); font-size: 12px; }
-.desc { margin: 0 0 12px; color: var(--rx-muted); font-size: 12px; line-height: 1.55; }
+.opt { max-width: 860px; margin: 0 auto; padding: 30px 24px 56px; font: 14px/1.65 var(--rx-font); color: var(--rx-text); }
 
-.themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.theme-card { position: relative; text-align: left; cursor: pointer; padding: 12px; border-radius: 10px; border: 1px solid var(--rx-border); background: var(--rx-bg-soft); color: var(--rx-text); font: inherit; display: flex; flex-direction: column; gap: 6px; }
-.theme-card:hover { border-color: var(--rx-accent); }
-.theme-card.active { border-color: var(--rx-accent); box-shadow: 0 0 0 1px var(--rx-accent) inset; }
-.theme-card b { font-size: 13.5px; }
-.theme-card .desc { margin: 0; }
-.dots { display: inline-flex; gap: 4px; }
-.dots i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--rx-border); }
-.tick { position: absolute; top: 10px; right: 10px; font-size: 10.5px; background: var(--rx-accent); color: var(--rx-accent-contrast); padding: 1px 7px; border-radius: 999px; }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding-bottom: 18px; margin-bottom: 26px; border-bottom: 1px solid var(--rx-border); }
+h1 { margin: 0 0 7px; font-family: var(--rx-font-head); font-size: 20px; font-weight: 600; letter-spacing: .2px; color: var(--rx-accent); text-shadow: var(--rx-glow); }
+.head-txt { flex: 1 1 380px; }
+.sub { margin: 0; color: var(--rx-muted); font-size: 12.5px; max-width: 58ch; }
+.chips { display: flex; gap: 7px; flex-wrap: wrap; padding-top: 3px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 11.5px; color: var(--rx-muted); background: var(--rx-bg-soft); border: 1px solid var(--rx-border); border-radius: 999px; }
+.chip b { font-weight: 600; color: var(--rx-text); }
+.chip.on { border-color: var(--rx-warn); }
+.chip.on b { color: var(--rx-warn); }
 
-.rows { display: flex; flex-direction: column; }
-.row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 4px; }
-.row .lbl { font-size: 13.5px; }
-.action-row { justify-content: flex-start; margin-top: 6px; }
+.block { margin-bottom: 22px; }
+.block-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding-left: 11px; margin-bottom: 9px; border-left: 2px solid var(--rx-accent); }
+h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .6px; color: var(--rx-text); }
+.hint { color: var(--rx-muted); font-size: 11.5px; }
 
-.empty { padding: 26px; text-align: center; color: var(--rx-muted); border: 1px dashed var(--rx-border); border-radius: 10px; font-size: 13px; }
-code { font-size: 12.5px; background: var(--rx-code-bg); padding: 1px 6px; border-radius: 4px; }
+.theme-bar { display: flex; align-items: center; gap: 12px; padding: 9px 12px; background: var(--rx-bg-elev); border: 1px solid var(--rx-border); border-radius: 9px; }
+.sw { display: inline-flex; width: 34px; height: 15px; flex: none; overflow: hidden; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--rx-muted) 45%, transparent); }
+.sw i { flex: 1; height: 100%; }
+.tb-txt { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
+.tb-txt b { font-size: 13px; font-weight: 600; flex: none; }
+.tb-txt em { font-style: normal; font-size: 11.5px; color: var(--rx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-sel { width: 104px; flex: none; }
+.tb-sel :deep(.el-input__wrapper) { background: var(--rx-bg-soft); }
 
-.danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--rx-border); border-left: 3px solid var(--rx-danger); border-radius: 8px; background: var(--rx-bg-soft); }
-.danger-zone b { font-size: 13.5px; }
-.danger-zone .desc { margin: 2px 0 0; }
+.fields { background: var(--rx-bg-elev); border: 1px solid var(--rx-border); border-radius: 10px; padding: 2px 16px; }
+.field { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 0; border-bottom: 1px solid var(--rx-border); }
+.field:last-of-type { border-bottom: none; }
+.f-txt { min-width: 0; }
+.f-txt b { display: block; font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.f-txt p { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--rx-muted); }
+.field.wide { flex-direction: column; align-items: stretch; gap: 9px; }
+.field :deep(.el-input-number) { width: 112px; flex: none; }
+.f-area { width: 100%; }
+.foot-actions { display: flex; justify-content: flex-end; margin: 0 -16px; padding: 8px 16px; border-top: 1px solid var(--rx-border); }
 
-.note-card { color: var(--rx-muted); font-size: 13px; line-height: 1.7; }
-.note-card h2 { color: var(--rx-text); margin-bottom: 8px; }
-.note-card p { margin: 0; }
+.hosts {
+  background: transparent;
+  border: 1px solid var(--rx-border); border-radius: 10px; overflow: hidden;
+  --el-table-bg-color: transparent; --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: var(--rx-bg-soft); --el-table-border-color: var(--rx-border);
+  --el-table-text-color: var(--rx-text); --el-table-header-text-color: var(--rx-muted);
+  --el-table-row-hover-bg-color: var(--rx-bg-soft);
+}
+.hosts :deep(th.el-table__cell) { font-size: 11.5px; font-weight: 500; letter-spacing: .5px; }
+.host { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; color: var(--rx-text); }
+.note { margin-left: 9px; font-size: 11.5px; color: var(--rx-muted); }
+.empty { padding: 24px; text-align: center; color: var(--rx-muted); font-size: 12.5px; background: var(--rx-bg-elev); border: 1px dashed var(--rx-border); border-radius: 10px; }
+
+.warn-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 10px; padding: 11px 14px; background: var(--rx-bg-soft); border: 1px solid var(--rx-border); border-left: 2px solid var(--rx-danger); border-radius: 9px; }
+.w-txt b { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
+.w-txt p { margin: 0; font-size: 11.5px; color: var(--rx-muted); }
+
+.legal { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--rx-border); font-size: 11.5px; line-height: 1.75; color: var(--rx-muted); }
+code { font-size: 11.5px; background: var(--rx-code-bg); padding: 1px 5px; border-radius: 4px; }
 </style>
