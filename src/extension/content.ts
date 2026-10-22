@@ -39,11 +39,60 @@
     let detectorInjectionInProgress = false
 
     /**
+     * detector 注入看门狗定时器。
+     *
+     * 注入锁只能靠页面脚本回传的消息释放，但存在「消息永不到达」的卡死路径：
+     *   - detectFramework 命中后走 analyzeAndReport，先 sendResult({detected:true})，
+     *     该分支故意不释放锁（把释放押给 50ms 后的路由 RESULT/ERROR）；
+     *   - 若 setTimeout 回调里的 performFullAnalysis 抛出、或 sendRouterResult 的兜底
+     *     postMessage 再次抛错，则路由的 RESULT/ERROR 都发不出来，锁将永久为 true，
+     *     此后每次重新检测/分析都被 injectDetector 静默拒绝，只能刷新页面才能恢复。
+     *
+     * 因此用超时兜底：注入时 armed，若在一个足够宽裕的窗口内没有任何终态消息，
+     * 强制释放锁。窗口要远大于正常链路（延迟检测 0/300/600ms + 路由 50ms），
+     * 只有真正卡死才会触发；收到 detected:true 时重新计时，给路由消息留出独立窗口。
+     */
+    const DETECTOR_LOCK_TIMEOUT_MS = 10000
+    let detectorWatchdog: ReturnType<typeof setTimeout> | null = null
+
+    /** 取消防狗（收到任一终态消息或注入失败时调用），避免后续误释放 */
+    function clearDetectorWatchdog(): void {
+        if (detectorWatchdog !== null) {
+            clearTimeout(detectorWatchdog)
+            detectorWatchdog = null
+        }
+    }
+
+    /**
+     * 释放注入锁并撤销看门狗。所有终态路径统一走这里，避免遗漏导致锁泄漏。
+     * @param rearm - 传 true 表示当前并非终态（如刚收到 detected:true），
+     *                需要保持锁占用并重新计时等待下一步消息
+     */
+    function releaseDetectorLock(rearm = false): void {
+        clearDetectorWatchdog()
+        if (rearm) {
+            armDetectorWatchdog()
+            return
+        }
+        detectorInjectionInProgress = false
+    }
+
+    /** 重新武装看门狗：超时后强制释放锁，兜住「消息永不到达」的卡死 */
+    function armDetectorWatchdog(): void {
+        clearDetectorWatchdog()
+        detectorWatchdog = setTimeout(() => {
+            detectorWatchdog = null
+            detectorInjectionInProgress = false
+        }, DETECTOR_LOCK_TIMEOUT_MS)
+    }
+
+    /**
      * 向页面注入技术栈检测脚本（MAIN world）以执行 Vue/React 检测与路由分析。
      *
      * 通过动态创建 <script> 并指向 web_accessible_resources 中的文件实现注入，
      * 脚本加载后立即移除 DOM 节点，避免污染页面结构。
      * 使用 detectorInjectionInProgress 做并发保护：分析未结束前重复调用会被忽略。
+     * 同时武装看门狗定时器，兜住回传消息丢失导致的锁不释放。
      *
      * @returns true 表示已发起注入；false 表示被并发保护拦截或注入失败
      */
@@ -54,14 +103,16 @@
 
         try {
             detectorInjectionInProgress = true
+            armDetectorWatchdog()
             const script = document.createElement('script')
             script.src = chrome.runtime.getURL('detector.js')
-            // 加载成功后移除节点；注入是否成功由页面脚本回传的消息判定
+            // 加载成功后移除节点；注入是否成功由页面脚本回传的消息判定，
+            // 故 onload 不释放锁——释放交给终态消息或看门狗超时。
             script.onload = function () {
                 script.remove()
             }
             script.onerror = function () {
-                detectorInjectionInProgress = false
+                releaseDetectorLock()
                 script.remove()
                 chrome.runtime.sendMessage({
                     action: "reconxDetectorError",
@@ -71,7 +122,7 @@
             ;(document.head || document.documentElement).appendChild(script)
             return true
         } catch (e) {
-            detectorInjectionInProgress = false
+            releaseDetectorLock()
             console.error("Failed to inject detector script:", e)
             frameworkDetectionResult.errorMsg = String(e)
             chrome.runtime.sendMessage({
@@ -138,9 +189,13 @@
             // ---- 类型 1：框架检测结果 ----
             if (data.type === 'RECONX_FRAMEWORK_DETECTION_RESULT') {
                 frameworkDetectionResult = data.result as typeof frameworkDetectionResult
-                // 未检测到框架时释放注入锁，允许后续重新注入重试
                 if (!frameworkDetectionResult.detected) {
-                    detectorInjectionInProgress = false
+                    // 未检测到框架即为终态，释放锁
+                    releaseDetectorLock()
+                } else {
+                    // 命中框架并非终态：detector.js 随后还会延迟回传路由结果。
+                    // 保持锁占用并重新计时，给这条路由消息留出独立的看门狗窗口。
+                    releaseDetectorLock(true)
                 }
 
                 chrome.runtime.sendMessage({
@@ -152,7 +207,7 @@
             else if (data.type === 'RECONX_ROUTER_ANALYSIS_RESULT') {
                 routerAnalysisResult = data.result as Record<string, unknown>
                 // 分析流程结束，释放注入锁
-                detectorInjectionInProgress = false
+                releaseDetectorLock()
 
                 chrome.runtime.sendMessage({
                     action: "reconxRouterAnalysisResult",
@@ -161,7 +216,7 @@
             }
             // ---- 类型 1：路由分析出错 ----
             else if (data.type === 'RECONX_ROUTER_ANALYSIS_ERROR') {
-                detectorInjectionInProgress = false
+                releaseDetectorLock()
                 chrome.runtime.sendMessage({
                     action: "reconxRouterAnalysisError",
                     error: data.error
