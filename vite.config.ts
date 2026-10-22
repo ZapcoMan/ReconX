@@ -135,8 +135,9 @@ const manifest = defineManifest({
   options_page: 'src/options/options.html',
   permissions: ['tabs', 'scripting', 'storage', 'webRequest'],
   optional_permissions: [],
-  optional_host_permissions: ['<all_urls>'],
-  host_permissions: [],
+  // 1.0.0 起去掉逐 host 授权：静态申请全站 host 权限，采集/探测/接管不再受允许域范围限制。
+  // 合规责任转由使用者承担（见 README/官网的授权须知）。
+  host_permissions: ['<all_urls>'],
   web_accessible_resources: [
     {
       resources: ['src/result/result.html', 'all-in.js', 'detector.js', 'api-extractor.js'],
