@@ -57,27 +57,34 @@ export interface PathProbe {
   desc: string
 }
 
+// 敏感路径探测规则。
+// keywords 的选取有一条硬约束：SPA 开 history 模式时，任意不存在的路径都会回退返回同一份
+// index.html 且状态 200。因此关键词必须是"只有该文件本身才会出现"的形态，
+// 不能是 = / name / api / dir 这类 HTML 里必然存在的裸词，否则每个 SPA 都会报出一堆假命中。
+// 带引号的 JSON 键名（"dependencies"）、真实响应字段（"propertySources"）、
+// 文件魔数（bud1、svn-filesystem）都能把回退页排除掉。
 export const PATH_PROBES = [
-  { path: '/.git/HEAD', method: 'GET', severity: 'high', keywords: ['ref:'], desc: 'Git 仓库可读取（源码泄露）' },
-  { path: '/.git/config', method: 'GET', severity: 'high', keywords: ['[core]', '[remote'], desc: 'Git config 暴露' },
-  { path: '/.env', method: 'GET', severity: 'high', keywords: ['=', 'app_key', 'db_', 'secret'], desc: '.env 配置泄露' },
-  { path: '/.env.production', method: 'GET', severity: 'high', keywords: ['=', 'db_'], desc: '生产环境 .env' },
-  { path: '/.svn/entries', method: 'GET', severity: 'medium', keywords: ['dir'], desc: 'SVN 元数据' },
-  { path: '/.DS_Store', method: 'GET', severity: 'low', keywords: ['bud1'], desc: '目录结构泄露' },
-  { path: '/web.config', method: 'GET', severity: 'medium', keywords: ['<?xml', 'configuration'], desc: 'IIS 配置泄露' },
+  { path: '/.git/HEAD', method: 'GET', severity: 'high', keywords: ['ref: refs/'], desc: 'Git 仓库可读取（源码泄露）' },
+  { path: '/.git/config', method: 'GET', severity: 'high', keywords: ['[core]', '[remote "'], desc: 'Git config 暴露' },
+  { path: '/.env', method: 'GET', severity: 'high', keywords: ['app_key', 'db_host', 'db_password', '_secret=', 'aws_secret_access_key'], desc: '.env 配置泄露' },
+  { path: '/.env.production', method: 'GET', severity: 'high', keywords: ['db_host', 'db_password', 'app_key', '_secret='], desc: '生产环境 .env' },
+  { path: '/.svn/entries', method: 'GET', severity: 'medium', keywords: ['svn-filesystem', 'url^/http', 'has-entries'], desc: 'SVN 元数据' },
+  { path: '/.DS_Store', method: 'GET', severity: 'low', keywords: ['bud1', '.macosx'], desc: '目录结构泄露' },
+  { path: '/web.config', method: 'GET', severity: 'medium', keywords: ['<appsettings', '<connectionstrings', 'system.webserver'], desc: 'IIS 配置泄露' },
   { path: '/.aws/credentials', method: 'GET', severity: 'high', keywords: ['aws_access_key_id'], desc: 'AWS 凭据泄露' },
   { path: '/phpinfo.php', method: 'GET', severity: 'medium', keywords: ['phpinfo()', 'php version'], desc: 'phpinfo 暴露' },
-  { path: '/server-status', method: 'GET', severity: 'medium', keywords: ['apache server status'], desc: 'Apache 状态页' },
-  { path: '/server-info', method: 'GET', severity: 'medium', keywords: ['server information'], desc: 'Apache 信息页' },
-  { path: '/actuator/env', method: 'GET', severity: 'high', keywords: ['property', 'source'], desc: 'Spring Actuator 环境端点' },
-  { path: '/actuator', method: 'GET', severity: 'medium', keywords: ['_links', 'beans', 'health'], desc: 'Spring Actuator 暴露' },
-  { path: '/api/swagger.json', method: 'GET', severity: 'medium', keywords: ['openapi', 'swagger'], desc: 'Swagger/OpenAPI 文档暴露' },
-  { path: '/openapi.json', method: 'GET', severity: 'medium', keywords: ['openapi', 'paths'], desc: 'OpenAPI 规范暴露' },
+  { path: '/server-status', method: 'GET', severity: 'medium', keywords: ['apache server status', 'server uptime'], desc: 'Apache 状态页' },
+  { path: '/server-info', method: 'GET', severity: 'medium', keywords: ['server information', 'apache version'], desc: 'Apache 信息页' },
+  { path: '/actuator/env', method: 'GET', severity: 'high', keywords: ['"propertySources"', '"activeProfiles"'], desc: 'Spring Actuator 环境端点' },
+  { path: '/actuator', method: 'GET', severity: 'medium', keywords: ['"_links"', '"beans"', '"health"'], desc: 'Spring Actuator 暴露' },
+  { path: '/api/swagger.json', method: 'GET', severity: 'medium', keywords: ['"openapi"', '"swagger"'], desc: 'Swagger/OpenAPI 文档暴露' },
+  { path: '/openapi.json', method: 'GET', severity: 'medium', keywords: ['"openapi"', '"paths"'], desc: 'OpenAPI 规范暴露' },
   { path: '/.well-known/security.txt', method: 'GET', severity: 'info', keywords: ['contact:', 'expires:'], desc: '安全联系人（赏金/披露渠道，正向发现）' },
-  { path: '/composer.json', method: 'GET', severity: 'low', keywords: ['require', 'name'], desc: '依赖清单泄露（技术栈+版本线索）' },
-  { path: '/package.json', method: 'GET', severity: 'low', keywords: ['dependencies', 'name'], desc: '依赖清单泄露（技术栈+版本线索）' },
-  { path: '/.hidden', method: 'GET', severity: 'info', keywords: ['admin', 'api', 'staging', 'internal', 'backup', 'test', 'debug'], desc: '隐藏管理员 API（HIDDEN-MGMT 模式）' }
+  { path: '/composer.json', method: 'GET', severity: 'low', keywords: ['"require-dev"', '"autoload"', '"psr-4"'], desc: '依赖清单泄露（技术栈+版本线索）' },
+  { path: '/package.json', method: 'GET', severity: 'low', keywords: ['"dependencies"', '"devdependencies"', '"scripts"'], desc: '依赖清单泄露（技术栈+版本线索）' },
+  { path: '/.hidden', method: 'GET', severity: 'info', keywords: ['x-total-count', '"hidden"', 'hidden-api'], desc: '隐藏管理员 API（HIDDEN-MGMT 模式）' }
 ] satisfies PathProbe[]
+
 
 export function decodeJwt(token: string): Record<string, any> {
   try {
