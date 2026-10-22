@@ -13,6 +13,7 @@ import { shrinkForStorage } from './core/storage-fallback'
 import { HISTORY_INDEX_KEY, bundleKey, makeBundleId, metaOf, addToIndex, removeFromIndex, type BundleMeta } from './core/bundle-store'
 import { SCHEMA_KEY, STORAGE_SCHEMA_VERSION, runMigrations } from './core/storage-schema'
 import { HeadersCache, type HeadersEntry } from './core/headers-cache'
+import { md5Hex } from './core/md5'
 import * as UserRules from './core/user-rules'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
@@ -95,6 +96,29 @@ function readHeaders(host: string): HeadersEntry | undefined {
   return headersCache.read(host, Date.now())
 }
 
+/**
+ * favicon 指纹：抓取图标字节并算 MD5，用于跨站资产识别（同图标常意味着同框架/同系统）。
+ * 纯指纹用途，非安全校验。失败时保留 URL、md5 为 null 并记原因，不影响整体采集。
+ */
+async function faviconFingerprint(url: string): Promise<{ url: string; md5: string | null; error?: string }> {
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 5000)
+    let r: Response
+    try {
+      r = await fetch(url, { credentials: 'omit', signal: ctrl.signal })
+    } finally {
+      clearTimeout(timer)
+    }
+    if (!r.ok) return { url, md5: null, error: 'HTTP ' + r.status }
+    const buf = new Uint8Array(await r.arrayBuffer())
+    if (!buf.length) return { url, md5: null, error: 'empty' }
+    return { url, md5: md5Hex(buf) }
+  } catch (e: any) {
+    return { url, md5: null, error: String((e && e.message) || e) }
+  }
+}
+
 chrome.webRequest.onHeadersReceived.addListener(cacheHeaders, { urls: ['<all_urls>'], types: ['main_frame', 'sub_frame', 'xmlhttprequest'] }, ['responseHeaders'])
 
 // ---------------- DOM 采集（函数式注入，直接返回 payload） ----------------
@@ -111,6 +135,7 @@ async function collectDom(tabId: number): Promise<any> {
         scripts: qsa('script[src]').map((s: any) => s.src),
         inlineScripts: qsa('script:not([src])').map((s: any) => s.textContent).filter(Boolean).join('\n/* ==== inline ==== */\n').slice(0, 200000),
         links: qsa('link[href]').map((l: any) => ({ rel: l.getAttribute('rel') || '', href: l.href })),
+        favicon: (() => { const l = document.querySelector('link[rel~="icon"], link[rel="shortcut icon"]'); return l && (l as any).href ? (l as any).href : (location.origin + '/favicon.ico') })(),
         styles: qsa('[style]').slice(0, 200).map((e: any) => txt(e.getAttribute('style'), 160)),
         images: qsa('img[src]').map((i: any) => i.src).slice(0, 800),
         iframes: qsa('iframe[src]').map((i: any) => i.src),
@@ -530,9 +555,10 @@ async function collect(tabId: number): Promise<any> {
   const links = buildLinks(payload, host, settings.linkBlacklist)
   const tech = buildTech(payload, headerReport, windowVars, resources)
   const waf = detectWaf(headerReport, payload.htmlEvidence || '')
+  const favicon = payload.favicon ? await faviconFingerprint(payload.favicon) : null
 
   const bundle: any = {
-    meta: { collectedAt: Date.now(), url: tab.url, title: payload.title, host, isHttps, headerNote },
+    meta: { collectedAt: Date.now(), url: tab.url, title: payload.title, host, isHttps, headerNote, favicon },
     links,
     resources: { scripts: resources.scripts.length, css: resources.css.length, images: resources.images.length, fonts: resources.fonts.length, data: resources.data.length, other: resources.other.length, scriptsList: resources.scripts.slice(0, 200) },
     tech, waf, headers: headerReport,

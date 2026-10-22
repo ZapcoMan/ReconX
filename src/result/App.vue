@@ -44,6 +44,9 @@
             搜索引擎跳转 {{ (bundle.links && bundle.links.engineSkipped) || 0 }} 条 ·
             黑名单 {{ (bundle.links && bundle.links.blacklistSkipped) || 0 }} 条（规则 {{ (bundle.links && bundle.links.blacklistRules) || 0 }} 条）
           </el-descriptions-item>
+          <el-descriptions-item label="图标指纹" :title="bundle.meta.favicon ? bundle.meta.favicon.url : ''">
+            {{ bundle.meta.favicon && bundle.meta.favicon.md5 ? bundle.meta.favicon.md5 : (bundle.meta.favicon && bundle.meta.favicon.error ? '未取到（' + bundle.meta.favicon.error + '）' : '无') }}
+          </el-descriptions-item>
         </el-descriptions>
         <h3>风险摘要</h3>
         <el-table :data="bundle.risks || []" size="small">

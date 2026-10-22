@@ -135,6 +135,7 @@ export function toMarkdown(b: any): string {
   L.push('')
   L.push('- 生成时间：' + new Date().toLocaleString('zh-CN'))
   L.push('- 目标 URL：' + (b.meta.url || ''))
+  if (b.meta.favicon && b.meta.favicon.md5) L.push('- 图标指纹（favicon MD5）：`' + b.meta.favicon.md5 + '`（' + b.meta.favicon.url + '）')
   if (b.meta.headerNote) L.push('- 采集备注：' + b.meta.headerNote)
   L.push('')
   L.push('## 发现汇总')
@@ -218,7 +219,7 @@ export function toHtml(b: any): string {
     "ul{padding-left:18px}.lvl{padding:1px 6px;border-radius:4px;font-size:12px;font-weight:700}.lvl.critical{background:#4a0d0d;color:#ff8a80}.lvl.high{background:#5a1500;color:#ffab91}.lvl.medium{background:#4a3600;color:#ffe082}.lvl.low{background:#0b3a4a;color:#80deea}.lvl.info{background:#243042;color:#9ab}" +
     'footer{color:var(--m);margin-top:30px;border-top:1px solid var(--l);padding-top:12px;font-size:12px}' +
     '</style></head><body><div class="wrap"><h1>Recon 采集报告</h1>' +
-    '<div class="meta">目标：' + esc(b.meta.url) + ' ｜ 生成：' + new Date().toLocaleString('zh-CN') + '</div>' +
+    '<div class="meta">目标：' + esc(b.meta.url) + ' ｜ 生成：' + new Date().toLocaleString('zh-CN') + (b.meta.favicon && b.meta.favicon.md5 ? ' ｜ 图标指纹：' + esc(b.meta.favicon.md5) : '') + '</div>' +
     '<div class="chips">' + chip('严重', c.critical) + chip('高危', c.high) + chip('中危', c.medium) + chip('低危', c.low) + chip('端点', b.links ? b.links.total : 0) + '</div>' +
     '<h2>发现项（命中原文）</h2><table><thead><tr><th>等级</th><th>类别</th><th>标题</th><th>位置</th><th>证据</th></tr></thead><tbody>' + (f.map(find).join('') || '<tr><td colspan=5>无</td></tr>') + '</tbody></table>' +
     '<h2>技术栈</h2><ul>' + (tech || '<li>无</li>') + '</ul>' +
