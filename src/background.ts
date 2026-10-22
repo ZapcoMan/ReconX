@@ -53,10 +53,6 @@ async function getScope(): Promise<Scope> {
 }
 async function saveScope(s: Scope): Promise<void> {
   await chrome.storage.local.set({ scope: s })
-  // 同步刷新内存镜像，使 webRequest 范围门立即对新增/删除的主机生效
-  scopeHostCache = new Set(s.hosts.map((h) => h.host))
-  // 范围变更后清空响应头缓存：避免已移出范围的主机残留其历史敏感头
-  headersCache.clear()
 }
 async function addHost(host: string, origin: string, note?: string): Promise<Scope> {
   const s = await getScope()
@@ -81,29 +77,15 @@ async function getSettings(): Promise<Settings> {
 
 // ---------------- 响应头缓存（来自 webRequest） ----------------
 // 缓存本体（TTL 过期、容量淘汰）在 HeadersCache 内；这里只负责「范围门」：
-// 仅把允许域内主机的响应头喂进缓存，杜绝跨站点静默收集敏感头。
+// 1.0.0 去范围限制：缓存所有站点的响应头（不再按允许域过滤），但仍保留 HeadersCache 的
+// TTL(30min) 与容量(200) 上限，避免长会话内存无界与陈旧响应头误导审计。
 const headersCache = new HeadersCache()
-
-// 允许域主机的内存镜像：webRequest 回调是同步高频触发，不能每次都 await 存储读取范围，
-// 因此维护一份内存 Set，在范围写入与启动时刷新。
-let scopeHostCache = new Set<string>()
-async function loadScopeCache(): Promise<void> {
-  try {
-    const s = await getScope()
-    scopeHostCache = new Set(s.hosts.map((h) => h.host))
-  } catch (e: any) {
-    // 读取失败保留旧缓存，不阻断收集
-    console.warn('[ReconX] 范围缓存刷新失败，沿用上一次范围：', e && e.message)
-  }
-}
 
 function cacheHeaders(details: chrome.webRequest.WebResponseHeadersDetails): void {
   if (!details.responseHeaders) return
   // url-utils：非法/非 http(s) URL 统一返空串，不再局部 try/catch
   const host = UrlUtils.safeHostname(details.url)
   if (!host) return
-  // 范围门：不在允许域内的主机一律不缓存
-  if (!scopeHostCache.has(host)) return
   const pairs = details.responseHeaders.map((h) => ({ name: h.name, value: h.value || '' }))
   headersCache.record(host, { type: String(details.type), url: details.url, pairs }, Date.now())
 }
@@ -114,8 +96,6 @@ function readHeaders(host: string): HeadersEntry | undefined {
 }
 
 chrome.webRequest.onHeadersReceived.addListener(cacheHeaders, { urls: ['<all_urls>'], types: ['main_frame', 'sub_frame', 'xmlhttprequest'] }, ['responseHeaders'])
-// SW 唤醒即尽早刷新范围内存镜像，使范围门尽快生效
-void loadScopeCache()
 
 // ---------------- DOM 采集（函数式注入，直接返回 payload） ----------------
 async function collectDom(tabId: number): Promise<any> {
@@ -215,15 +195,15 @@ async function limit<T, R>(items: T[], n: number, fn: (it: T) => Promise<R>): Pr
 }
 
 // ---------------- 扫描 JS（敏感信息 + 端点 + sourcemap） ----------------
-async function scanJs(scriptUrls: string[], inlineText: string, currentHost: string, scopeHosts: string[], settings: Settings): Promise<any> {
+async function scanJs(scriptUrls: string[], inlineText: string, settings: Settings): Promise<any> {
   const endpoints: ApiExtract.EndpointsAccumulator = Object.create(null)
   const shortSource = UrlUtils.filenameOf
   const uniq: string[] = []
   const seen = new Set<string>()
   for (const u of scriptUrls) {
+    // 1.0.0 去范围限制：候选 JS 本就是当前页已加载的资源，不再按允许域白名单过滤主机
     const h = UrlUtils.safeHostname(u)
     if (!h) continue
-    if (h !== currentHost && !scopeHosts.includes(h)) continue
     if (seen.has(u)) continue
     seen.add(u)
     uniq.push(u)
@@ -515,8 +495,6 @@ async function ensureSchema(): Promise<void> {
   } catch (e: any) {
     console.warn('[ReconX] 存储迁移未完成，将按当前结构继续使用：', e && e.message)
   }
-  // 顺带刷新范围内存镜像，使 webRequest 范围门与最新允许域一致
-  await loadScopeCache()
 }
 
 // ---------------- 主收集流程 ----------------
@@ -549,7 +527,7 @@ async function collect(tabId: number): Promise<any> {
   }
   const headerReport = HeaderChecks.analyze(headerPairs, isHttps)
   const resources = buildResources(payload)
-  const js = await scanJs(resources.scripts.concat(payload.resourceUrls || []), payload.inlineScripts, host, scope.hosts.map((h) => h.host), settings)
+  const js = await scanJs(resources.scripts.concat(payload.resourceUrls || []), payload.inlineScripts, settings)
   const links = buildLinks(payload, host, settings.linkBlacklist)
   const tech = buildTech(payload, headerReport, windowVars, resources)
   const waf = detectWaf(headerReport, payload.htmlEvidence || '')
