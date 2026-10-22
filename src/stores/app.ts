@@ -56,25 +56,6 @@ export const useAppStore = defineStore('app', {
       await this.queryActive()
       await this.loadState()
     },
-    async authorize(): Promise<boolean> {
-      if (!this.active.origin) { this.message = '当前页 URL 不支持授权'; return false }
-      this.busyAction = 'authorize'
-      try {
-        let granted = false
-        try { granted = await chrome.permissions.request({ origins: [this.active.origin + '/*'] }) } catch { granted = false }
-        if (!granted) { this.message = '未获得 host 权限，无法采集'; return false }
-        await M.addHost(this.active.host, this.active.origin, '')
-        await this.refresh()
-        this.message = '已加入允许域并授权'
-        return true
-      } finally {
-        this.busyAction = ''
-      }
-    },
-    async revokeHost(host: string, origin: string): Promise<void> {
-      await M.removeHost(host, origin)
-      await this.refresh()
-    },
     async collect(): Promise<void> {
       if (this.active.tabId == null) return
       this.busyAction = 'collect'

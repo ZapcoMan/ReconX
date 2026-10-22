@@ -2,17 +2,15 @@
   <div class="pop">
     <div class="head">
       <span class="title">ReconX</span>
-      <el-tag v-if="store.inScope" type="success" size="small">在允许域</el-tag>
-      <el-tag v-else type="danger" size="small">未授权</el-tag>
+      <el-tag v-if="store.settings.activeProbe" type="warning" size="small">主动探测已开</el-tag>
       <el-button class="gear" text :icon="Setting" title="设置" @click="openOptions" />
     </div>
 
     <div class="host">{{ store.active.host || '（无可用页面）' }}</div>
 
     <el-space direction="vertical" fill class="acts" :size="8">
-      <el-button v-if="!store.inScope" type="primary" :loading="store.busyAction === 'authorize'" @click="onAuthorize">授权并加入范围</el-button>
-      <el-button :disabled="!store.inScope" :loading="store.busyAction === 'collect'" @click="onCollect">开始采集</el-button>
-      <el-button :disabled="!store.inScope || !store.lastBundle || !store.settings.activeProbe" :loading="store.busyAction === 'probes'" @click="onProbes">主动探测</el-button>
+      <el-button type="primary" :disabled="!store.active.tabId" :loading="store.busyAction === 'collect'" @click="onCollect">开始采集</el-button>
+      <el-button :disabled="!store.lastBundle || !store.settings.activeProbe" :loading="store.busyAction === 'probes'" @click="onProbes">主动探测</el-button>
       <el-button :disabled="!store.lastBundle" @click="store.openResult()">查看结果</el-button>
     </el-space>
 
@@ -37,9 +35,6 @@ onMounted(async () => {
 
 function openOptions(): void {
   chrome.runtime.openOptionsPage()
-}
-async function onAuthorize(): Promise<void> {
-  await store.authorize()
 }
 async function onCollect(): Promise<void> {
   await store.collect()
