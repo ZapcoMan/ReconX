@@ -10,6 +10,7 @@ import { computeExtras } from './core/collect-extras'
 import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
 import { shrinkForStorage } from './core/storage-fallback'
+import { HISTORY_INDEX_KEY, bundleKey, makeBundleId, metaOf, addToIndex, removeFromIndex, migrateLegacy, type BundleMeta } from './core/bundle-store'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
 
@@ -407,16 +408,73 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
   return { ok: true, results, routes, allIn: allInResult }
 }
 
-// ---------------- 结果落盘（全量优先，超配额才降级截断） ----------------
+// ---------------- 结果落盘（lastBundle 保持"最新一份"语义，历史另存索引 + 全量键） ----------------
+async function readIndex(): Promise<BundleMeta[]> {
+  const d = await chrome.storage.local.get(HISTORY_INDEX_KEY)
+  const idx = d && Array.isArray(d[HISTORY_INDEX_KEY]) ? d[HISTORY_INDEX_KEY] : []
+  return idx.filter((m: any) => m && typeof m.id === 'string')
+}
+
+async function writeIndex(index: BundleMeta[]): Promise<void> {
+  await chrome.storage.local.set({ [HISTORY_INDEX_KEY]: index })
+}
+
+/** 历史条目的 id 来自页面消息，限定字符集与长度再拼成存储键 */
+const BUNDLE_ID_RE = /^[\w.@-]{1,120}$/
+const isBundleId = (id: unknown): id is string => typeof id === 'string' && BUNDLE_ID_RE.test(id)
+
+/** 全量键写入失败时逐条丢最旧重试；最终失败只放弃历史，lastBundle 已落盘就不算白采 */
+async function appendHistory(bundle: any): Promise<BundleMeta[]> {
+  const meta = metaOf(bundle)
+  if (bundle.meta) bundle.meta.id = meta.id
+  const index = await readIndex()
+  const merged = addToIndex(index, meta)
+  const queue = merged.dropped.slice()
+  let current = merged.next
+  for (let attempt = 0; attempt <= 5; attempt++) {
+    try {
+      await chrome.storage.local.set({ [bundleKey(meta.id)]: bundle, [HISTORY_INDEX_KEY]: current })
+      if (queue.length) await chrome.storage.local.remove(queue.map((m) => bundleKey(m.id)))
+      return current
+    } catch (e: any) {
+      if (!current.length) break
+      const oldest = current[current.length - 1]
+      current = current.slice(0, -1)
+      queue.push(oldest)
+      console.warn('[ReconX] history over quota, dropped oldest:', oldest.id)
+    }
+  }
+  try { await writeIndex(current) } catch { /* 索引也写不下就到此为止 */ }
+  console.warn('[ReconX] 未能写入采集历史条目，lastBundle 仍可用')
+  return current
+}
+
 async function persistBundle(bundle: any): Promise<void> {
+  // 先定 id 再落盘，保证 lastBundle 与历史条目指向同一条（探测更新要覆盖的就是它）
+  if (bundle && bundle.meta && !bundle.meta.id) bundle.meta.id = makeBundleId(bundle)
+  let stored = bundle
   try {
     await chrome.storage.local.set({ lastBundle: bundle })
-    return
   } catch (e: any) {
     // 全量写失败（多为配额）时退回截断副本，绝不让整次采集白做
-    await chrome.storage.local.set({ lastBundle: shrinkForStorage(bundle, String((e && e.message) || e)) })
+    stored = shrinkForStorage(bundle, String((e && e.message) || e))
+    await chrome.storage.local.set({ lastBundle: stored })
     console.warn('[ReconX] bundle over quota, saved truncated copy:', e)
   }
+  await appendHistory(stored)
+}
+
+/** 老用户升级后第一次访问历史时，把既有 lastBundle 登记为第 1 条 */
+async function migrateLegacyHistory(): Promise<BundleMeta[]> {
+  const { lastBundle } = await chrome.storage.local.get(['lastBundle', HISTORY_INDEX_KEY])
+  const index = await readIndex()
+  const next = migrateLegacy(lastBundle, index)
+  if (next && next !== index && lastBundle) {
+    await appendHistory(lastBundle)
+    // appendHistory 会给 meta.id 补上，回写一次，避免下次列历史时又走一遍判重分支
+    try { await chrome.storage.local.set({ lastBundle }) } catch { /* 配额紧就到此为止 */ }
+  }
+  return readIndex()
 }
 
 // ---------------- 主收集流程 ----------------
@@ -602,6 +660,54 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
     }
     case 'COLLECT': {
       collect(msg.tabId).then((r) => sendResponse(r)).catch((e) => sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }))
+      return true
+    }
+    case 'LIST_BUNDLES': {
+      ;(async () => sendResponse({ ok: true, bundles: await migrateLegacyHistory() }))()
+      return true
+    }
+    case 'OPEN_BUNDLE': {
+      ;(async () => {
+        if (!isBundleId(msg.id)) { sendResponse({ ok: false, error: 'bad-id' }); return }
+        const key = bundleKey(msg.id)
+        const d = await chrome.storage.local.get(key)
+        const b = d && d[key]
+        sendResponse(b ? { ok: true, bundle: b } : { ok: false, error: 'not-found' })
+      })()
+      return true
+    }
+    case 'DELETE_BUNDLE': {
+      ;(async () => {
+        if (!isBundleId(msg.id)) { sendResponse({ ok: false, error: 'bad-id' }); return }
+        await chrome.storage.local.remove(bundleKey(msg.id))
+        const next = removeFromIndex(await readIndex(), msg.id)
+        await writeIndex(next)
+        const { lastBundle } = await chrome.storage.local.get('lastBundle')
+        if (lastBundle && lastBundle.meta && lastBundle.meta.id === msg.id) await chrome.storage.local.remove('lastBundle')
+        sendResponse({ ok: true, bundles: next })
+      })()
+      return true
+    }
+    case 'USE_BUNDLE': {
+      ;(async () => {
+        if (!isBundleId(msg.id)) { sendResponse({ ok: false, error: 'bad-id' }); return }
+        const key = bundleKey(msg.id)
+        const d = await chrome.storage.local.get(key)
+        const b = d && d[key]
+        if (!b) { sendResponse({ ok: false, error: 'not-found' }); return }
+        // 把所选历史提为"最新一份"，结果页无需改造即可按老逻辑打开它
+        try { await chrome.storage.local.set({ lastBundle: b }) } catch (e: any) { sendResponse({ ok: false, error: 'quota', hint: String((e && e.message) || e) }); return }
+        sendResponse({ ok: true, bundle: b })
+      })()
+      return true
+    }
+    case 'CLEAR_BUNDLES': {
+      ;(async () => {
+        const index = await readIndex()
+        // 连 lastBundle 一起清：否则索引空着而 lastBundle 还在，下次列历史又会被迁移逻辑塞回去
+        await chrome.storage.local.remove([...index.map((m) => bundleKey(m.id)), HISTORY_INDEX_KEY, 'lastBundle'])
+        sendResponse({ ok: true, bundles: [] })
+      })()
       return true
     }
     case 'RUN_PROBES': {

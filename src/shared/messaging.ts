@@ -54,6 +54,14 @@ export const collect = (tabId: number): Promise<CollectResponse> => send<Collect
 export const runProbes = (origin: string, host: string, tabId: number): Promise<ProbesResponse> => send<ProbesResponse>({ type: 'RUN_PROBES', origin, host, tabId })
 export const openResult = (): Promise<{ ok: boolean }> => send({ type: 'OPEN_RESULT' })
 
+// ---- 采集历史 ----
+export interface HistoryResponse { ok: boolean; bundles?: any[]; error?: string }
+export const listBundles = (): Promise<HistoryResponse> => send<HistoryResponse>({ type: 'LIST_BUNDLES' })
+export const openBundle = (id: string): Promise<{ ok: boolean; bundle?: any; error?: string }> => send({ type: 'OPEN_BUNDLE', id })
+export const deleteBundle = (id: string): Promise<HistoryResponse> => send<HistoryResponse>({ type: 'DELETE_BUNDLE', id })
+export const useBundle = (id: string): Promise<{ ok: boolean; error?: string; hint?: string }> => send({ type: 'USE_BUNDLE', id })
+export const clearBundles = (): Promise<HistoryResponse> => send<HistoryResponse>({ type: 'CLEAR_BUNDLES' })
+
 /** 向指定 tab 的 content script 发送指令（detectFramework / analyzeRouter / getAllInStatus / extractApi） */
 export function sendToContent<T = any>(tabId: number, action: string, extra?: Record<string, unknown>): Promise<T> {
   return new Promise((resolve) => {

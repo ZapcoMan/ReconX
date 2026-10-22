@@ -15,19 +15,17 @@
             <el-dropdown-item command="txt">端点 TXT</el-dropdown-item>
             <el-dropdown-item command="full" divided>综合报告 MD（含接管/路由/审计）</el-dropdown-item>
             <el-dropdown-item command="all">全部格式批量导出</el-dropdown-item>
-            <el-dropdown-item v-if="extraBundles.length" command="multi" divided>聚合导出 MD（当前 + 已导入 {{ extraBundles.length }} 份）</el-dropdown-item>
+            <el-dropdown-item command="multi" divided>聚合导出 MD（选既往结果合并）</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-select v-model="exportMinSeverity" size="small" style="width:120px" title="导出前按风险等级过滤（filterBundle）">
+      <el-select v-model="exportMinSeverity" size="small" style="width:120px" placeholder="全等级" title="导出前按风险等级过滤（filterBundle）">
         <el-option label="全等级" value="" />
         <el-option label="中危及以上" value="medium" />
         <el-option label="高危及以上" value="high" />
         <el-option label="仅严重" value="critical" />
       </el-select>
-      <el-button size="small" @click="pickBundles">导入 JSON</el-button>
       <input ref="fileInput" type="file" accept=".json" multiple hidden @change="onFilesPicked" />
-      <span v-if="multiMsg" class="tip">{{ multiMsg }}</span>
       <el-button size="small" @click="copyRaw">复制原始 JSON</el-button>
     </header>
     <el-alert v-if="bundle.storageTruncated" type="warning" :closable="false" class="mb"
@@ -308,6 +306,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, toRaw } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { exportBundle, exportFullReport, exportMulti, filterBundle, parseJson, exportJson } from '../core/exporter'
 import { applyTheme, resolveTheme } from '../shared/theme'
 import { buildProbeCompare } from '../core/probe-sources'
@@ -418,8 +417,6 @@ function exportUserDorks(): void { exportJson(toRaw(userDorks[dorkPkg.value]), '
 
 // 导出控制：等级过滤（filterBundle）+ 全量/多格式/聚合导出（exportFullReport/exportMulti）
 const exportMinSeverity = ref('')
-const extraBundles = ref<any[]>([])
-const multiMsg = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 
 // bundle.value 是 Vue 响应式代理，filterBundle 内的 structuredClone 无法拷贝 Proxy，必须先 toRaw
@@ -429,31 +426,29 @@ function exportView(): any {
 }
 function onExport(fmt: string): void {
   if (!bundle.value) return
+  // 聚合导出要临时挑既往结果文件，交给隐藏 input，选完即导即忘，页面上不留常驻入口
+  if (fmt === 'multi') { fileInput.value?.click(); return }
   const view = exportView()
   if (fmt === 'full') exportFullReport(view, (view.meta && view.meta.url) || '')
   else if (fmt === 'all') exportBundle(view, ['json', 'csv', 'md', 'src', 'html', 'txt'])
-  else if (fmt === 'multi') exportMulti([view, ...extraBundles.value.map((b) => toRaw(b))], 'md')
   else exportBundle(view, fmt)
-}
-function pickBundles(): void {
-  fileInput.value?.click()
 }
 async function onFilesPicked(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files || [])
-  const ok: any[] = []
+  const picked: any[] = []
   const bad: string[] = []
   for (const f of files) {
-    // parseJson：安全解析，非法 JSON 只标记失败文件不中断导入
+    // parseJson：安全解析，非法 JSON 只标记失败文件不中断
     const parsed = parseJson(await f.text())
-    if (parsed.ok && parsed.data && parsed.data.meta) ok.push(parsed.data)
+    if (parsed.ok && parsed.data && parsed.data.meta) picked.push(parsed.data)
     else bad.push(f.name)
   }
-  extraBundles.value = extraBundles.value.concat(ok)
-  multiMsg.value = '已导入 ' + ok.length + ' 份结果' + (bad.length ? '，失败：' + bad.join('、') : '')
   input.value = ''
+  if (!picked.length) { ElMessage.error(bad.length ? '这些文件不是采集结果 JSON：' + bad.join('、') : '未选择有效文件'); return }
+  exportMulti([exportView(), ...picked], 'md')
+  ElMessage.success('已聚合导出 ' + (picked.length + 1) + ' 份结果' + (bad.length ? '，跳过 ' + bad.length + ' 个无效文件' : ''))
 }
-
 function importDorks(): void {
   const parsed = parseJson(dorkImportText.value)
   if (!parsed.ok) { dorkImportMsg.value = 'JSON 解析失败：' + parsed.error; return }
@@ -521,6 +516,7 @@ h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
 .subtabs { padding-top: 2px; }
 .subtabs :deep(.el-tabs__header) { margin-bottom: 10px; }
 .empty { padding: 40px; text-align: center; color: var(--rx-muted); }
+:deep(.el-table .is-current td.el-table__cell) { background: var(--rx-accent-soft); }
 .rawjson { background: var(--rx-code-bg); color: var(--rx-text); padding: 14px; border-radius: 8px; box-shadow: var(--rx-glow); max-height: 560px; overflow: auto; font-family: var(--rx-font); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; cursor: text; }
 .mb { margin-bottom: 12px; }
 .dual { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; }

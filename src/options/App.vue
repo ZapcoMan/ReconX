@@ -76,6 +76,25 @@
       </div>
     </section>
 
+    <section class="block">
+      <div class="block-head"><h2>采集历史</h2><span class="hint">每次采集自动留一份，最多 {{ HISTORY_LIMIT }} 份，超出丢弃最旧</span></div>
+      <el-table v-if="history.length" :data="history" size="small" class="hosts">
+        <el-table-column label="采集时间" width="158"><template #default="{ row }"><span class="mono">{{ fmt(row.collectedAt) }}</span></template></el-table-column>
+        <el-table-column label="主机与内容"><template #default="{ row }"><span class="host">{{ row.host }}</span><span class="note">{{ summaryOf(row as BundleMeta) }}</span></template></el-table-column>
+        <el-table-column label="" width="140" align="right">
+          <template #default="{ row }">
+            <el-button size="small" text @click="openInResult(row.id)">打开</el-button>
+            <el-button size="small" text type="danger" @click="removeOne(row.id)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-else class="empty">尚无历史结果。采集一次后，这里就能逐份打开或删除。</div>
+      <div v-if="history.length" class="hist-foot">
+        <span class="hint">共 {{ history.length }} 份 · 全部只存在本机 <code>chrome.storage.local</code>，删除不可恢复</span>
+        <el-button size="small" text type="danger" @click="clearHistory">清空全部历史</el-button>
+      </div>
+    </section>
+
     <footer class="legal">
       ReconX 仅用于你拥有或已获书面授权的目标（渗透测试 / 漏洞赏金 / OSINT / 自查）。命中皆为线索，需人工确认，且一律以原文留存并进入导出文件。所有数据仅保存在本机浏览器，不外传。请遵守目标站点条款与当地法律。
     </footer>
@@ -89,6 +108,7 @@ import * as M from '../shared/messaging'
 import type { ScopeHost, Settings } from '../types'
 import { THEME_ORDER, THEME_META, type ThemeId } from '../core/themes'
 import { applyTheme, resolveTheme } from '../shared/theme'
+import { HISTORY_LIMIT, type BundleMeta } from '../core/bundle-store'
 
 const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [] }
 
@@ -103,6 +123,41 @@ function applyBlacklist(): Promise<void> {
   return persist()
 }
 
+// 采集历史：管理动作（打开/删除/清空）集中在设置页，结果页只负责切换查看
+const history = ref<BundleMeta[]>([])
+const summaryOf = (m: BundleMeta): string => `端点 ${m.endpoints} · 路由 ${m.routes} · 发现 ${m.findings}${m.probes ? ' · 已探测' : ''}${m.truncated ? ' · 截断副本' : ''}`
+
+async function loadHistory(): Promise<void> {
+  const r = await M.listBundles()
+  history.value = (r.bundles || []) as BundleMeta[]
+}
+
+async function openInResult(id: string): Promise<void> {
+  const r = await M.useBundle(id)
+  if (!r.ok) { ElMessage.error(r.hint || r.error || '打开失败'); return }
+  await M.openResult()
+  ElMessage.success('已在结果页打开该份采集')
+}
+
+async function removeOne(id: string): Promise<void> {
+  const target = history.value.find((m) => m.id === id)
+  try {
+    await ElMessageBox.confirm(`删除 ${target ? target.host : '这条'} 的采集结果？其完整数据会一并从本机移除，不可恢复。`, '删除确认', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  } catch { return }
+  await M.deleteBundle(id)
+  await loadHistory()
+  ElMessage.success('已删除该条采集历史')
+}
+
+async function clearHistory(): Promise<void> {
+  try {
+    await ElMessageBox.confirm('清空全部采集历史，包括弹窗「查看结果」当前指向的那份。清空后需重新采集。', '清空确认', { type: 'warning', confirmButtonText: '清空全部', cancelButtonText: '取消' })
+  } catch { return }
+  await M.clearBundles()
+  await loadHistory()
+  ElMessage.success('已清空采集历史')
+}
+
 const fmt = (ts: number): string => new Date(ts).toLocaleString('zh-CN')
 
 onMounted(async () => {
@@ -111,6 +166,8 @@ onMounted(async () => {
   Object.assign(settings, { ...DEFAULTS }, s || {})
   blacklistText.value = (settings.linkBlacklist || []).join('\n')
   applyTheme(resolveTheme(settings.theme))
+  // 历史列表要在页面打开时就拉一次，否则「采集历史」分区永远是空的
+  await loadHistory()
 })
 
 async function persist(): Promise<void> {
@@ -213,6 +270,8 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .6px; color: 
 .empty { padding: 24px; text-align: center; color: var(--rx-muted); font-size: 12.5px; background: var(--rx-bg-elev); border: 1px dashed var(--rx-border); border-radius: 10px; }
 
 .warn-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 10px; padding: 11px 14px; background: var(--rx-bg-soft); border: 1px solid var(--rx-border); border-left: 2px solid var(--rx-danger); border-radius: 9px; }
+.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: var(--rx-muted); }
+.hist-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; }
 .w-txt b { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
 .w-txt p { margin: 0; font-size: 11.5px; color: var(--rx-muted); }
 
