@@ -10,7 +10,8 @@ import { computeExtras } from './core/collect-extras'
 import { probeRoutes } from './core/probe-routes'
 import { routerProbe } from './core/router-probe'
 import { shrinkForStorage } from './core/storage-fallback'
-import { HISTORY_INDEX_KEY, bundleKey, makeBundleId, metaOf, addToIndex, removeFromIndex, migrateLegacy, type BundleMeta } from './core/bundle-store'
+import { HISTORY_INDEX_KEY, bundleKey, makeBundleId, metaOf, addToIndex, removeFromIndex, type BundleMeta } from './core/bundle-store'
+import { SCHEMA_KEY, STORAGE_SCHEMA_VERSION, runMigrations } from './core/storage-schema'
 import * as UserRules from './core/user-rules'
 import type { Scope, Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
@@ -456,6 +457,8 @@ async function appendHistory(bundle: any): Promise<BundleMeta[]> {
 async function persistBundle(bundle: any): Promise<void> {
   // 先定 id 再落盘，保证 lastBundle 与历史条目指向同一条（探测更新要覆盖的就是它）
   if (bundle && bundle.meta && !bundle.meta.id) bundle.meta.id = makeBundleId(bundle)
+  // 落盘时带上结构版本，日后读到没有这个字段的 bundle 就知道是迁移前的旧数据
+  if (bundle && bundle.meta) bundle.meta.schema = STORAGE_SCHEMA_VERSION
   let stored = bundle
   try {
     await chrome.storage.local.set({ lastBundle: bundle })
@@ -468,17 +471,17 @@ async function persistBundle(bundle: any): Promise<void> {
   await appendHistory(stored)
 }
 
-/** 老用户升级后第一次访问历史时，把既有 lastBundle 登记为第 1 条 */
-async function migrateLegacyHistory(): Promise<BundleMeta[]> {
-  const { lastBundle } = await chrome.storage.local.get(['lastBundle', HISTORY_INDEX_KEY])
-  const index = await readIndex()
-  const next = migrateLegacy(lastBundle, index)
-  if (next && next !== index && lastBundle) {
-    await appendHistory(lastBundle)
-    // appendHistory 会给 meta.id 补上，回写一次，避免下次列历史时又走一遍判重分支
-    try { await chrome.storage.local.set({ lastBundle }) } catch { /* 配额紧就到此为止 */ }
+/**
+ * 确保存储结构已迁移到当前版本。挂在启动、安装与首次读取处，
+ * 迁移本身幂等（见 core/storage-schema），失败只记日志，绝不阻塞采集与浏览。
+ */
+async function ensureSchema(): Promise<void> {
+  try {
+    const r = await runMigrations(chrome.storage.local as any)
+    if (r.applied.length) console.info('[ReconX] 存储结构迁移：v' + r.from + ' → v' + r.to, r.applied)
+  } catch (e: any) {
+    console.warn('[ReconX] 存储迁移未完成，将按当前结构继续使用：', e && e.message)
   }
-  return readIndex()
 }
 
 // ---------------- 主收集流程 ----------------
@@ -667,7 +670,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
       return true
     }
     case 'LIST_BUNDLES': {
-      ;(async () => sendResponse({ ok: true, bundles: await migrateLegacyHistory() }))()
+      ;(async () => { await ensureSchema(); sendResponse({ ok: true, bundles: await readIndex() }) })()
       return true
     }
     case 'OPEN_BUNDLE': {
@@ -761,9 +764,10 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get('settings').then((d) => { if (!d.settings) chrome.storage.local.set({ settings: DEFAULT_SETTINGS }) })
-  registerAllInContentScript()
+  // 升级安装即完成结构迁移，不等用户第一次打开历史列表
+  ensureSchema().then(registerAllInContentScript)
 })
 
 chrome.runtime.onStartup.addListener(() => {
-  registerAllInContentScript()
+  ensureSchema().then(registerAllInContentScript)
 })

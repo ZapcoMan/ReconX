@@ -55,14 +55,6 @@ export function findInIndex(index: BundleMeta[] | null | undefined, id: string):
   return (index || []).find((m) => m && m.id === id) || null
 }
 
-/** 老用户只有 lastBundle：首次访问历史时把它登记成第一条，lastBundle 键本身保持不动以兼容旧读取 */
-export function migrateLegacy(lastBundle: any, index: BundleMeta[] | null | undefined): BundleMeta[] | null {
-  if (!lastBundle || !lastBundle.meta || !lastBundle.meta.collectedAt) return index || null
-  if ((index || []).some((m) => m.url === lastBundle.meta.url && m.collectedAt === lastBundle.meta.collectedAt)) return index || null
-  const meta = metaOf({ ...lastBundle, meta: { ...lastBundle.meta, id: lastBundle.meta.id || makeBundleId(lastBundle) } })
-  return addToIndex(index, meta).next
-}
-
 export function describeMeta(m: BundleMeta): string {
   const t = m.collectedAt ? new Date(m.collectedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '未知时间'
   return `${t} · ${m.host} · 端点 ${m.endpoints} · 路由 ${m.routes} · 发现 ${m.findings}${m.probes ? ' · 已探测' : ''}${m.truncated ? ' · 截断副本' : ''}`
