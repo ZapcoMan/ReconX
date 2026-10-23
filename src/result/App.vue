@@ -157,12 +157,13 @@
         </el-table>
         <Pager v-model:page="pg.apiStatic.page" v-model:size="pg.apiStatic.size" :total="((bundle.api && bundle.api.staticApis) || []).length" />
         <h3>推断的后端基址（axios baseURL / env / JS 内出现域名，共 {{ ((bundle.js && bundle.js.baseUrls) || []).length }} 条）</h3>
-        <el-table v-if="bundle.js && bundle.js.baseUrls && bundle.js.baseUrls.length" :data="bundle.js.baseUrls" size="small">
+        <el-table v-if="bundle.js && bundle.js.baseUrls && bundle.js.baseUrls.length" :data="paged('baseUrls', bundle.js.baseUrls)" size="small">
           <el-table-column prop="value" label="基址" />
           <el-table-column prop="kind" label="类型" width="90" />
           <el-table-column label="跨域" width="70"><template #default="{ row }">{{ isCrossOrigin(row.value) ? '是' : '否' }}</template></el-table-column>
           <el-table-column label="来源"><template #default="{ row }">{{ (row.sources || []).join(', ') }}</template></el-table-column>
         </el-table>
+        <Pager v-if="bundle.js && bundle.js.baseUrls && bundle.js.baseUrls.length" v-model:page="pg.baseUrls.page" v-model:size="pg.baseUrls.size" :total="((bundle.js && bundle.js.baseUrls) || []).length" />
         <div v-else class="empty">未从 JS 中推断出后端基址。</div>
       </el-tab-pane>
 
@@ -213,20 +214,21 @@
             <el-button link type="primary" size="small" @click="promoteRuleGlobal(r.sig)">全站忽略</el-button>
           </div>
         </el-alert>
-        <el-table :data="reviewShown" size="small">
+        <el-table :data="paged('review', reviewShown)" size="small">
           <el-table-column label="档位" width="110"><template #default="{ row }"><el-tag :type="confTag(row)" size="small">{{ tierCn(row.confidence.tier) }} · {{ row.confidence.score }}</el-tag></template></el-table-column>
           <el-table-column label="类型" width="100"><template #default="{ row }">{{ kindCn(row.kind) }}</template></el-table-column>
           <el-table-column prop="label" label="命中" show-overflow-tooltip />
           <el-table-column prop="detail" label="位置 / 详情" show-overflow-tooltip />
           <el-table-column label="操作" width="100"><template #default="{ row }"><el-button v-if="!row.flagged" link type="info" size="small" @click="markFp(row.kind, row.key)">标记误报</el-button><el-button v-else link type="primary" size="small" @click="unmarkFp(row.kind, row.key)">恢复</el-button></template></el-table-column>
         </el-table>
+        <Pager v-model:page="pg.review.page" v-model:size="pg.review.size" :total="reviewShown.length" />
         <div v-if="!reviewCounts.total" class="empty">本次采集没有可复核的风险命中（JS 发现 / 敏感接口 / 主动探测均为空）。</div>
       </el-tab-pane>
 
       <el-tab-pane label="主动探测" name="probes">
         <template v-if="bundle.probes && bundle.probes.performed">
           <h3>主动探测命中（当前站点 {{ probesSplit.kept.length }} 条{{ probesSplit.ignored.length ? '，另有 ' + probesSplit.ignored.length + ' 条已标记误报' : '' }}）</h3>
-          <el-table :data="probesSplit.kept" size="small">
+          <el-table :data="paged('probeHits', probesSplit.kept)" size="small">
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="status" label="状态" width="80" />
             <el-table-column label="置信" width="110"><template #default="{ row }"><el-tag :type="TIER_TAG[probeConf(row).tier]" size="small">{{ tierCn(probeConf(row).tier) }} · {{ probeConf(row).score }}</el-tag></template></el-table-column>
@@ -235,6 +237,7 @@
             <el-table-column prop="desc" label="说明" />
             <el-table-column label="误报" width="90"><template #default="{ row }"><el-button link type="info" size="small" @click="markFp('probe', row.path)">标记误报</el-button></template></el-table-column>
           </el-table>
+          <Pager v-model:page="pg.probeHits.page" v-model:size="pg.probeHits.size" :total="probesSplit.kept.length" />
           <el-collapse v-if="probesSplit.ignored.length">
             <el-collapse-item :title="'已标记误报 ' + probesSplit.ignored.length + ' 条（原始命中仍保留）'">
               <el-table :data="probesSplit.ignored" size="small">
@@ -248,12 +251,13 @@
           <template v-if="bundle.probes.routes && bundle.probes.routes.applicable">
             <h3>前端路由可达性（{{ bundle.probes.routes.framework }} · {{ bundle.probes.routes.routerKind }}）</h3>
             <div class="tip">共拼接 {{ (bundle.probes.routes.routeFullUrls || []).length }} 条完整路由 URL，探测其中前 {{ (bundle.probes.routes.routeProbes || []).length }} 条；全量列表会写入「综合报告 MD」的路由完整 URL 章节。</div>
-            <el-table :data="bundle.probes.routes.routeProbes || []" size="small">
+            <el-table :data="paged('routeProbes', bundle.probes.routes.routeProbes)" size="small">
               <el-table-column prop="path" label="路由" />
               <el-table-column prop="status" label="状态" width="80" />
               <el-table-column prop="bytes" label="字节" width="90" />
               <el-table-column label="URL"><template #default="{ row }"><code>{{ row.url }}</code></template></el-table-column>
             </el-table>
+            <Pager v-model:page="pg.routeProbes.page" v-model:size="pg.routeProbes.size" :total="(bundle.probes.routes.routeProbes || []).length" />
           </template>
           <div v-else-if="bundle.probes.routes" class="tip">{{ bundle.probes.routes.reason }}</div>
         </template>
@@ -443,7 +447,11 @@ const pg = reactive<Record<string, { page: number; size: number }>>({
   apiLive: { page: 1, size: 50 },
   apiStatic: { page: 1, size: 50 },
   sensitive: { page: 1, size: 50 },
-  liveApiStatic: { page: 1, size: 50 }
+  liveApiStatic: { page: 1, size: 50 },
+  review: { page: 1, size: 50 },
+  probeHits: { page: 1, size: 50 },
+  baseUrls: { page: 1, size: 50 },
+  routeProbes: { page: 1, size: 50 }
 })
 function paged(key: string, list: any[] | null | undefined): any[] {
   const s = pg[key]
