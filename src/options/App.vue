@@ -322,6 +322,9 @@ async function restoreDefaults(): Promise<void> {
   const keep = settings.theme
   Object.assign(settings, { ...DEFAULTS, theme: keep })
   blacklistText.value = ''
+  // 同步重置两个规则文本框，否则残留旧 JSON 会让"校验并入"把刚清掉的自定义规则写回
+  patternText.value = JSON.stringify(toBackupPatterns(settings.userPatterns), null, 2)
+  probeText.value = JSON.stringify(settings.userProbes, null, 2)
   await persist()
   ElMessage.success('已恢复默认参数')
 }

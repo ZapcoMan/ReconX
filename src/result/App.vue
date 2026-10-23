@@ -563,15 +563,19 @@ onMounted(async () => {
 
 async function copyRaw(): Promise<void> {
   const text = rawJson.value
+  if (!text) { ElMessage.error('无采集结果可复制'); return }
   try {
     await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制原始 JSON')
   } catch {
     const ta = document.createElement('textarea')
     ta.value = text
     document.body.appendChild(ta)
     ta.select()
-    document.execCommand('copy')
+    let ok = false
+    try { ok = document.execCommand('copy') } catch { ok = false }
     ta.remove()
+    if (ok) ElMessage.success('已复制原始 JSON'); else ElMessage.error('复制失败，请手动选择原始 JSON 文本')
   }
 }
 const dorkEngine = ref('google')
