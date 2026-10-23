@@ -15,7 +15,7 @@ import { SCHEMA_KEY, STORAGE_SCHEMA_VERSION, runMigrations } from './core/storag
 import { HeadersCache, type HeadersEntry } from './core/headers-cache'
 import { md5Hex } from './core/md5'
 import * as UserRules from './core/user-rules'
-import type { Scope, Settings } from './types'
+import type { Settings } from './types'
 import type { LiveSnapshot } from './shared/messaging'
 
 const DEFAULT_SETTINGS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [], userPatterns: [], userProbes: [] }
@@ -47,30 +47,6 @@ async function registerAllInContentScript(): Promise<void> {
   }
 }
 
-// ---------------- 范围（允许域白名单） ----------------
-async function getScope(): Promise<Scope> {
-  const { scope } = await chrome.storage.local.get('scope')
-  return scope && Array.isArray(scope.hosts) ? (scope as Scope) : { hosts: [] }
-}
-async function saveScope(s: Scope): Promise<void> {
-  await chrome.storage.local.set({ scope: s })
-}
-async function addHost(host: string, origin: string, note?: string): Promise<Scope> {
-  const s = await getScope()
-  if (!s.hosts.some((h) => h.host === host)) {
-    s.hosts.push({ host, origin, addedAt: Date.now(), note: note || '' })
-    await saveScope(s)
-    registerAllInContentScript()
-  }
-  return s
-}
-async function removeHost(host: string): Promise<Scope> {
-  const s = await getScope()
-  s.hosts = s.hosts.filter((h) => h.host !== host)
-  await saveScope(s)
-  registerAllInContentScript()
-  return s
-}
 async function getSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get('settings')
   return Object.assign({}, DEFAULT_SETTINGS, settings || {})
@@ -681,35 +657,15 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
   switch (msg.type) {
     case 'GET_STATE': {
       ;(async () => {
-        const scope = await getScope()
         const settings = await getSettings()
         const { lastBundle } = await chrome.storage.local.get('lastBundle')
         const live = await getLiveState()
         sendResponse({
-          ok: true, scope, settings,
-          inScope: true,
+          ok: true, settings,
           hasCache: msg.host ? !!((readHeaders(msg.host) || { main: [] }).main.length) : false,
           lastBundle: lastBundle || null,
           live
         })
-      })()
-      return true
-    }
-    case 'ADD_HOST': {
-      ;(async () => { await addHost(msg.host, msg.origin, msg.note); sendResponse({ ok: true }) })()
-      return true
-    }
-    case 'REMOVE_HOST': {
-      ;(async () => {
-        const s = await removeHost(msg.host)
-        // 授权时申请的是 origin + '/*'，撤销必须用同一 pattern，否则 permissions.remove 不匹配、权限撤不掉
-        try {
-          if (msg.origin) {
-            const pat = String(msg.origin).endsWith('/*') ? msg.origin : msg.origin + '/*'
-            await chrome.permissions.remove({ origins: [pat] })
-          }
-        } catch { /* */ }
-        sendResponse({ ok: true, scope: s })
       })()
       return true
     }

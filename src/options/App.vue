@@ -2,11 +2,10 @@
   <div class="opt">
     <header class="head">
       <div class="head-txt">
-        <h1>设置与范围管理</h1>
-        <p class="sub">允许域决定 ReconX 能在哪些主机上工作；采集参数与主动探测开关决定它做多少事。</p>
+        <h1>侦察设置</h1>
+        <p class="sub">ReconX 在任意站点静默采集；采集参数与主动探测开关决定它做多少事。</p>
       </div>
       <div class="chips">
-        <span class="chip">允许域 <b>{{ hosts.length }}</b></span>
         <span class="chip" :class="{ on: settings.activeProbe }">主动探测 <b>{{ settings.activeProbe ? '已开启' : '已关闭' }}</b></span>
         <span class="chip">主题 <b>{{ themeMeta.label }}</b></span>
       </div>
@@ -33,7 +32,7 @@
         <div class="field">
           <div class="f-txt">
             <b>启用主动探测</b>
-            <p>开启后才允许执行敏感路径与路由可达性探测，并把常驻接管脚本注册到允许域；关闭时弹窗的探测按钮不可用，已注册的脚本会被撤销。</p>
+            <p>开启后才允许执行敏感路径与路由可达性探测，并把常驻接管脚本注册到全站 <code>&lt;all_urls&gt;</code>；关闭时弹窗的探测按钮不可用，已注册的脚本会被撤销。</p>
           </div>
           <el-switch v-model="settings.activeProbe" @change="persist" />
         </div>
@@ -145,7 +144,7 @@
 import { ref, reactive, computed, onMounted, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as M from '../shared/messaging'
-import type { ScopeHost, Settings } from '../types'
+import type { Settings } from '../types'
 import { THEME_ORDER, THEME_META, type ThemeId, type ConcreteThemeId } from '../core/themes'
 import { applyTheme, resolveTheme, effectiveTheme } from '../shared/theme'
 import { HISTORY_LIMIT, findInIndex, describeMeta, type BundleMeta } from '../core/bundle-store'
@@ -155,7 +154,6 @@ import { describeFp, withFp, withoutFp } from '../core/false-positive'
 
 const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [], userPatterns: [], userProbes: [] }
 
-const hosts = ref<ScopeHost[]>([])
 const settings = reactive<Settings>({ ...DEFAULTS })
 // 黑名单在设置里是 string[]，界面用多行文本编辑，两者在此互转
 const blacklistText = ref('')
@@ -289,8 +287,7 @@ async function clearFps(): Promise<void> {
 const fmt = (ts: number): string => new Date(ts).toLocaleString('zh-CN')
 
 onMounted(async () => {
-  const { scope, settings: s, falsePositives: fp } = await chrome.storage.local.get(['scope', 'settings', 'falsePositives'])
-  if (scope && Array.isArray(scope.hosts)) hosts.value = scope.hosts
+  const { settings: s, falsePositives: fp } = await chrome.storage.local.get(['settings', 'falsePositives'])
   Object.assign(settings, { ...DEFAULTS }, s || {})
   if (Array.isArray(fp)) fps.value = fp
   blacklistText.value = (settings.linkBlacklist || []).join('\n')

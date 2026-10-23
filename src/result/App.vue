@@ -349,7 +349,7 @@
       </el-tab-pane>
 
       <el-tab-pane label="原始 JSON" name="raw">
-        <pre class="rawjson" @click="selectPre">{{ JSON.stringify(bundle, null, 2) }}</pre>
+        <pre class="rawjson" @click="selectPre">{{ rawJson }}</pre>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -474,6 +474,9 @@ async function loadBaseline(id: string): Promise<void> {
   baselineBundle.value = (r as Record<string, any>)['bundle:' + id] || null
 }
 
+// 原始 JSON 只在 bundle 变化时序列化一次，避免每次响应式重渲染都对整个 bundle 重新 stringify
+const rawJson = computed(() => (bundle.value ? JSON.stringify(bundle.value, null, 2) : ''))
+
 onMounted(async () => {
   const { lastBundle, settings, liveState, userDorks: ud, falsePositives: fp, bundleHistory: bh } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks', 'falsePositives', 'bundleHistory'])
   applyTheme(resolveTheme(settings && settings.theme))
@@ -487,7 +490,7 @@ onMounted(async () => {
 })
 
 async function copyRaw(): Promise<void> {
-  const text = JSON.stringify(bundle.value, null, 2)
+  const text = rawJson.value
   try {
     await navigator.clipboard.writeText(text)
   } catch {

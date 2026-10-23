@@ -1,5 +1,5 @@
 // 与 background 的消息封装：把 chrome.runtime.sendMessage 的回调式统一 Promise 化。
-import type { Scope, Settings } from '../types'
+import type { Settings } from '../types'
 
 /** 页面侧实时状态快照：background 串行写入 chrome.storage.local 的 liveState 键，与采集结果分离 */
 export interface LiveSnapshot {
@@ -17,9 +17,7 @@ export interface LiveSnapshot {
 
 export interface StateResponse {
   ok: boolean
-  scope: Scope
   settings: Settings
-  inScope: boolean
   hasCache: boolean
   lastBundle: any | null
   live?: LiveSnapshot
@@ -49,8 +47,6 @@ function send<T>(msg: Record<string, any>): Promise<T> {
 }
 
 export const getState = (host?: string): Promise<StateResponse> => send<StateResponse>({ type: 'GET_STATE', host })
-export const addHost = (host: string, origin: string, note?: string): Promise<{ ok: boolean }> => send({ type: 'ADD_HOST', host, origin, note })
-export const removeHost = (host: string, origin?: string): Promise<{ ok: boolean; scope?: Scope }> => send({ type: 'REMOVE_HOST', host, origin })
 export const setSettings = (patch: Partial<Settings>): Promise<{ ok: boolean }> => send({ type: 'SET_SETTINGS', patch })
 export const collect = (tabId: number): Promise<CollectResponse> => send<CollectResponse>({ type: 'COLLECT', tabId })
 export const runProbes = (origin: string, host: string, tabId: number): Promise<ProbesResponse> => send<ProbesResponse>({ type: 'RUN_PROBES', origin, host, tabId })
