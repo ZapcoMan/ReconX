@@ -666,7 +666,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
           lastBundle: lastBundle || null,
           live
         })
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'SET_SETTINGS': {
@@ -676,7 +676,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         // activeProbe 变化会决定常驻接管脚本是否注册，需同步重算
         await registerAllInContentScript()
         sendResponse({ ok: true })
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'COLLECT': {
@@ -684,7 +684,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
       return true
     }
     case 'LIST_BUNDLES': {
-      ;(async () => { await ensureSchema(); sendResponse({ ok: true, bundles: await readIndex() }) })()
+      ;(async () => { await ensureSchema(); sendResponse({ ok: true, bundles: await readIndex() }) })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'OPEN_BUNDLE': {
@@ -694,7 +694,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         const d = await chrome.storage.local.get(key)
         const b = d && d[key]
         sendResponse(b ? { ok: true, bundle: b } : { ok: false, error: 'not-found' })
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'DELETE_BUNDLE': {
@@ -706,7 +706,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         const { lastBundle } = await chrome.storage.local.get('lastBundle')
         if (lastBundle && lastBundle.meta && lastBundle.meta.id === msg.id) await chrome.storage.local.remove('lastBundle')
         sendResponse({ ok: true, bundles: next })
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'USE_BUNDLE': {
@@ -719,7 +719,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         // 把所选历史提为"最新一份"，结果页无需改造即可按老逻辑打开它
         try { await chrome.storage.local.set({ lastBundle: b }) } catch (e: any) { sendResponse({ ok: false, error: 'quota', hint: String((e && e.message) || e) }); return }
         sendResponse({ ok: true, bundle: b })
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'CLEAR_BUNDLES': {
@@ -728,7 +728,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
         // 连 lastBundle 一起清：否则索引空着而 lastBundle 还在，下次列历史又会被迁移逻辑塞回去
         await chrome.storage.local.remove([...index.map((m) => bundleKey(m.id)), HISTORY_INDEX_KEY, 'lastBundle'])
         sendResponse({ ok: true, bundles: [] })
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'RUN_PROBES': {
@@ -750,7 +750,7 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
           }
         }
         sendResponse(res)
-      })()
+      })().catch((e) => { try { sendResponse({ ok: false, error: 'exception', hint: String((e && e.message) || e) }) } catch { /* port 已关 */ } })
       return true
     }
     case 'OPEN_RESULT': {

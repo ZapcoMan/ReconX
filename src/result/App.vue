@@ -502,9 +502,18 @@ const baselineId = ref('')
 const baselineBundle = ref<any>(null)
 const baselineOptions = computed(() => hist.value.filter((m) => m.id !== (bundle.value && bundle.value.meta && bundle.value.meta.id)))
 const diff = computed(() => (baselineBundle.value && bundle.value ? diffBundles(baselineBundle.value, bundle.value) : null))
+let baselineToken = 0
 async function loadBaseline(id: string): Promise<void> {
-  if (!id) { baselineBundle.value = null; return }
-  const r = await chrome.storage.local.get('bundle:' + id)
+  if (!id) { baselineToken++; baselineBundle.value = null; return }
+  const my = ++baselineToken
+  let r: Record<string, any>
+  try {
+    r = await chrome.storage.local.get('bundle:' + id)
+  } catch {
+    if (my === baselineToken) baselineBundle.value = null
+    return
+  }
+  if (my !== baselineToken) return // 已有更新的基线请求，丢弃这次乱序旧响应
   baselineBundle.value = (r as Record<string, any>)['bundle:' + id] || null
 }
 
