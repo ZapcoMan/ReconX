@@ -80,16 +80,15 @@ async function faviconFingerprint(url: string): Promise<{ url: string; md5: stri
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 5000)
-    let r: Response
     try {
-      r = await fetch(url, { credentials: 'omit', signal: ctrl.signal })
+      const r = await fetch(url, { credentials: 'omit', signal: ctrl.signal })
+      if (!r.ok) return { url, md5: null, error: 'HTTP ' + r.status }
+      const buf = new Uint8Array(await r.arrayBuffer())
+      if (!buf.length) return { url, md5: null, error: 'empty' }
+      return { url, md5: md5Hex(buf) }
     } finally {
       clearTimeout(timer)
     }
-    if (!r.ok) return { url, md5: null, error: 'HTTP ' + r.status }
-    const buf = new Uint8Array(await r.arrayBuffer())
-    if (!buf.length) return { url, md5: null, error: 'empty' }
-    return { url, md5: md5Hex(buf) }
   } catch (e: any) {
     return { url, md5: null, error: String((e && e.message) || e) }
   }
@@ -171,7 +170,6 @@ async function fetchText(url: string): Promise<any> {
   const to = setTimeout(() => ctrl.abort(), 5000)
   try {
     const r = await fetch(url, { credentials: 'omit', redirect: 'follow', signal: ctrl.signal })
-    clearTimeout(to)
     const cl = parseInt(r.headers.get('content-length') || '0', 10)
     if (cl > 1500000) return { url, ok: true, skipped: true, reason: 'too-large', status: r.status, finalUrl: r.url }
     const t = await r.text()
@@ -391,10 +389,10 @@ async function runProbes(origin: string, host: string, tabId?: number): Promise<
       const ctrl = new AbortController()
       const to = setTimeout(() => ctrl.abort(), 5000)
       const r = await fetch(url, { method: 'GET', credentials: 'omit', redirect: 'follow', signal: ctrl.signal })
-      clearTimeout(to)
       status = r.status
       let text = ''
       try { const buf = await r.text(); text = buf.slice(0, 20000); bytes = buf.length } catch { /* */ }
+      clearTimeout(to)
       const low = text.toLowerCase()
       matched = p.keywords.some((k) => low.includes(k.toLowerCase()))
       results.push({ path: p.path, status, bytes, matched: status >= 200 && status < 400 && matched, desc: p.desc, severity: p.severity })

@@ -105,6 +105,11 @@ export function filterBundle(bundle: any, opts?: { minSeverity?: string; categor
     out.headers.advisories = (out.headers.advisories || []).filter((x: any) => bySev(x.level))
   }
   if (out.probes && out.probes.results) out.probes.results = out.probes.results.filter((p: any) => bySev(p.severity))
+  if (out.security) {
+    out.security.sensitiveApis = (out.security.sensitiveApis || []).filter((x: any) => bySev(x.riskLevel))
+    out.security.unauthorizedRoutes = (out.security.unauthorizedRoutes || []).filter((x: any) => bySev(x.riskLevel))
+  }
+  if (out.links && out.links.classified) out.links.classified = out.links.classified.filter((x: any) => bySev(x.level))
   out.risks = (out.risks || []).filter((r: any) => bySev(r.level) && (!keepCat || keepCat.has(r.category)))
   return out
 }
