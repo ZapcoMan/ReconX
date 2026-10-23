@@ -628,13 +628,13 @@ function importDorks(): void {
   const v = validateImport(parsed.data)
   if (!v.ok) { dorkImportMsg.value = '校验失败：' + v.error + '（顶层需为含 name/template 的数组）'; return }
   userDorks[dorkPkg.value] = parsed.data
-  chrome.storage.local.set({ userDorks: { general: userDorks.general, edu: userDorks.edu } })
+  chrome.storage.local.set({ userDorks: JSON.parse(JSON.stringify({ general: userDorks.general, edu: userDorks.edu })) })
   dorkImportMsg.value = '已并入「' + (dorkPkg.value === 'edu' ? '教育行业包' : '通用侦察包') + '」' + v.count + ' 条并保存'
   dorkImportText.value = ''
 }
 function clearUserDorks(): void {
   userDorks[dorkPkg.value] = []
-  chrome.storage.local.set({ userDorks: { general: userDorks.general, edu: userDorks.edu } })
+  chrome.storage.local.set({ userDorks: JSON.parse(JSON.stringify({ general: userDorks.general, edu: userDorks.edu })) })
   dorkImportMsg.value = '已清除本包自定义 Dork'
 }
 const dorkItems = computed(() => {

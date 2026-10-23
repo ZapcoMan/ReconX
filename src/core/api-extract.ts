@@ -132,7 +132,10 @@ export function finalize(endpoints: EndpointsAccumulator, livePathnames: string[
     sources: endpoints[path].sources,
     called: (livePathnames || []).some((lp) => {
       const cleaned = cleanTemplatePath(path)
-      return lp === cleaned || (cleaned.length > 1 && lp.indexOf(cleaned) === 0)
+      if (lp === cleaned) return true
+      if (cleaned.length <= 1 || lp.indexOf(cleaned) !== 0) return false
+      // cleaned 以 / 结尾（模板清空后）视为前缀命中；否则要求下一字符为段边界，避免 /api/order 误配 /api/orders
+      return cleaned.charAt(cleaned.length - 1) === '/' || lp.charAt(cleaned.length) === '/' || lp.charAt(cleaned.length) === '?' || lp.charAt(cleaned.length) === '#'
     })
   }))
   list.sort((a, b) => a.path.localeCompare(b.path))
