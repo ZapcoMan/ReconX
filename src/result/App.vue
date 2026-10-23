@@ -568,6 +568,17 @@ onMounted(async () => {
   if (ud && Array.isArray(ud.edu)) userDorks.edu = ud.edu
   if (Array.isArray(fp)) fpList.value = fp
   if (Array.isArray(bh)) hist.value = bh
+  // 跨页/实时同步：任一页改 falsePositives 都跟随（避免各页用挂载快照整键覆盖丢标记）；
+  // 后台采集/探测写 lastBundle、实时回传写 liveState 时本页自动刷新，无需重开标签。
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return
+    if (changes.falsePositives) fpList.value = Array.isArray(changes.falsePositives.newValue) ? changes.falsePositives.newValue : []
+    if (changes.lastBundle) {
+      bundle.value = changes.lastBundle.newValue || null
+      if (bundle.value && bundle.value.meta) assetDomain.value = bundle.value.meta.host || assetDomain.value
+    }
+    if (changes.liveState) live.value = changes.liveState.newValue || { updatedAt: 0 }
+  })
 })
 
 async function copyRaw(): Promise<void> {

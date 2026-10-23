@@ -300,6 +300,10 @@ onMounted(async () => {
   probeText.value = JSON.stringify(settings.userProbes, null, 2)
   // 历史列表要在页面打开时就拉一次，否则「采集历史」分区永远是空的
   await loadHistory()
+  // 跟随其它页（尤其结果页）对 falsePositives 的增删，避免本页用挂载快照整键覆盖丢标记
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && changes.falsePositives) fps.value = Array.isArray(changes.falsePositives.newValue) ? changes.falsePositives.newValue : []
+  })
 })
 
 async function persist(): Promise<void> {
