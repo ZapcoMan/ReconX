@@ -169,10 +169,12 @@
       <el-tab-pane label="安全" name="security">
         <template v-if="bundle.security">
           <el-alert :title="'整体风险：' + riskLabel(bundle.security.summary.overallRisk) + ' · 敏感API ' + bundle.security.summary.sensitiveApiCount + ' · 待核验路由 ' + bundle.security.summary.unprotectedRoutes + ' · 预期公开 ' + (bundle.security.summary.publicRoutes || 0) + ' 条未计入'" type="warning" :closable="false" />
+          <div class="tip" style="margin:6px 0 2px">{{ securityTierLine }}</div>
           <h3>敏感接口线索（当前站点 {{ sensitiveSplit.kept.length }} 条{{ sensitiveSplit.ignored.length ? '，另有 ' + sensitiveSplit.ignored.length + ' 条已标记误报（保留在下方，不参与展示计数）' : '' }}）</h3>
           <el-table :data="paged('sensitive', sensitiveSplit.kept)" size="small">
             <el-table-column prop="category" label="类别" width="120" />
             <el-table-column prop="riskLevel" label="风险" width="90" />
+            <el-table-column label="置信" width="110"><template #default="{ row }"><el-tag :type="TIER_TAG[apiConf(row).tier]" size="small">{{ tierCn(apiConf(row).tier) }} · {{ apiConf(row).score }}</el-tag></template></el-table-column>
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="source" label="来源" width="90" />
             <el-table-column label="误报" width="90"><template #default="{ row }"><el-button link type="info" size="small" @click="markFp('api', row.path)">标记误报</el-button></template></el-table-column>
@@ -182,6 +184,7 @@
             <el-collapse-item :title="'已标记误报 ' + sensitiveSplit.ignored.length + ' 条（原始命中仍保留）'">
               <el-table :data="sensitiveSplit.ignored" size="small">
                 <el-table-column prop="category" label="类别" width="120" />
+                <el-table-column label="置信" width="90"><template #default><el-tag type="info" size="small">存疑</el-tag></template></el-table-column>
                 <el-table-column prop="path" label="路径" />
                 <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" size="small" @click="unmarkFp('api', row.path)">恢复</el-button></template></el-table-column>
               </el-table>
@@ -199,6 +202,7 @@
           <el-table :data="probesSplit.kept" size="small">
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="status" label="状态" width="80" />
+            <el-table-column label="置信" width="110"><template #default="{ row }"><el-tag :type="TIER_TAG[probeConf(row).tier]" size="small">{{ tierCn(probeConf(row).tier) }} · {{ probeConf(row).score }}</el-tag></template></el-table-column>
             <el-table-column prop="bytes" label="字节" width="90" />
             <el-table-column label="命中" width="80"><template #default="{ row }">{{ row.matched ? '命中' : '' }}</template></el-table-column>
             <el-table-column prop="desc" label="说明" />
@@ -209,6 +213,7 @@
               <el-table :data="probesSplit.ignored" size="small">
                 <el-table-column prop="path" label="路径" />
                 <el-table-column prop="status" label="状态" width="80" />
+                <el-table-column label="置信" width="90"><template #default><el-tag type="info" size="small">存疑</el-tag></template></el-table-column>
                 <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" size="small" @click="unmarkFp('probe', row.path)">恢复</el-button></template></el-table-column>
               </el-table>
             </el-collapse-item>
@@ -369,6 +374,7 @@ import { riskLabel } from '../core/sensitive-rules'
 import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
 import { fpSignature, fpMapKey, fpSet, splitByFp, withFp, withoutFp, type FpKind } from '../core/false-positive'
 import { diffBundles, diffSummary } from '../core/diff'
+import { confidenceOf, tierCn, tierCounts, type Tier } from '../core/confidence'
 import type { BundleMeta } from '../core/bundle-store'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
@@ -476,6 +482,23 @@ async function loadBaseline(id: string): Promise<void> {
 
 // 原始 JSON 只在 bundle 变化时序列化一次，避免每次响应式重渲染都对整个 bundle 重新 stringify
 const rawJson = computed(() => (bundle.value ? JSON.stringify(bundle.value, null, 2) : ''))
+
+// 置信度分级：把严重度 / 来源数 / 探测状态综合成一个可解释的档位；被标误报的直接判为存疑
+function apiConf(row: any) {
+  return confidenceOf({ severity: String((row && row.riskLevel) || '').toLowerCase(), sourceCount: (row && row.sources && row.sources.length) || 1, occurrences: (row && row.count) || 1 })
+}
+function probeConf(row: any) {
+  return confidenceOf({ severity: String((row && row.severity) || '').toLowerCase(), status: row && row.status })
+}
+const TIER_TAG: Record<Tier, 'danger' | 'warning' | 'info'> = { high: 'danger', medium: 'warning', low: 'info', suspect: 'info' }
+const keptApiTiers = computed<Tier[]>(() => sensitiveSplit.value.kept.map((r: any) => apiConf(r).tier))
+const keptProbeTiers = computed<Tier[]>(() => probesSplit.value.kept.map((r: any) => probeConf(r).tier))
+const securityTierLine = computed(() => {
+  const c = tierCounts(keptApiTiers.value.concat(keptProbeTiers.value))
+  const parts: string[] = []
+  ;(['high', 'medium', 'low', 'suspect'] as Tier[]).forEach((t) => { if (c[t]) parts.push(tierCn(t) + ' ' + c[t]) })
+  return parts.length ? '未标记误报命中的置信分布：' + parts.join(' · ') + '（分级只影响阅读优先级，原始命中一律保留）' : '暂无可分级命中'
+})
 
 onMounted(async () => {
   const { lastBundle, settings, liveState, userDorks: ud, falsePositives: fp, bundleHistory: bh } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks', 'falsePositives', 'bundleHistory'])

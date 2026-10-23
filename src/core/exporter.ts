@@ -3,6 +3,7 @@
 import { generateBundleReportMarkdown } from './security-report'
 import * as UrlUtils from './url-utils'
 import { SEVERITY_ORDER } from './sensitive-rules'
+import { confidenceOf, tierCn } from './confidence'
 import type { Severity } from '../types'
 
 // 等级权重只有 sensitive-rules 一处定义，导出层不再自备副本
@@ -174,7 +175,11 @@ export function toMarkdown(b: any): string {
   }
   if (b.probes && b.probes.performed) {
     L.push('## 主动探测')
-    ;(b.probes.results || []).filter((p: any) => p.matched).forEach((p: any) => L.push('- [' + (SEV_CN[p.severity as keyof typeof SEV_CN] || p.severity) + '] ' + p.path + ' -> ' + p.status + ' ' + p.desc))
+    L.push('> 置信度：严重度基线 + 响应状态综合（200 直接暴露↑、401/403 存在但被守↓）；被人工标记误报者判为"存疑"。分级只影响阅读优先级，不移除任何命中。')
+    ;(b.probes.results || []).filter((p: any) => p.matched).forEach((p: any) => {
+      const cf = confidenceOf({ severity: String(p.severity || '').toLowerCase(), status: p.status })
+      L.push('- [' + (SEV_CN[p.severity as keyof typeof SEV_CN] || p.severity) + '] ' + p.path + ' -> ' + p.status + '（置信 ' + tierCn(cf.tier) + ' ' + cf.score + '） ' + p.desc)
+    })
     L.push('')
   }
   L.push('## 测试范围与未覆盖项')
