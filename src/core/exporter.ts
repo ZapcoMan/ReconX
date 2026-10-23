@@ -4,6 +4,7 @@ import { generateBundleReportMarkdown } from './security-report'
 import * as UrlUtils from './url-utils'
 import { SEVERITY_ORDER } from './sensitive-rules'
 import { confidenceOf, tierCn } from './confidence'
+import { buildReviewWorklist } from './review'
 import type { Severity } from '../types'
 
 // 等级权重只有 sensitive-rules 一处定义，导出层不再自备副本
@@ -180,6 +181,15 @@ export function toMarkdown(b: any): string {
       const cf = confidenceOf({ severity: String(p.severity || '').toLowerCase(), status: p.status })
       L.push('- [' + (SEV_CN[p.severity as keyof typeof SEV_CN] || p.severity) + '] ' + p.path + ' -> ' + p.status + '（置信 ' + tierCn(cf.tier) + ' ' + cf.score + '） ' + p.desc)
     })
+    L.push('')
+  }
+  const wl = buildReviewWorklist(b, (b.meta && b.meta.host) || '', new Set())
+  if (wl.length) {
+    const kindShort: Record<string, string> = { finding: '发现', api: '敏感接口', probe: '探测', route: '路由' }
+    L.push('## 复核优先级（按置信降序，前 15 条）')
+    L.push('')
+    L.push('> 把 JS 发现 / 敏感接口 / 主动探测三类命中汇成一张待复核清单；置信 = 严重度基线 + 来源佐证 + 探测状态。导出为完整取证材料，不含个人误报标记。')
+    wl.slice(0, 15).forEach((it, i) => L.push('- ' + (i + 1) + '. [' + tierCn(it.confidence.tier) + ' ' + it.confidence.score + '] ' + (kindShort[it.kind] || it.kind) + ' · ' + it.label + '（' + it.detail + '）'))
     L.push('')
   }
   L.push('## 测试范围与未覆盖项')

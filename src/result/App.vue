@@ -196,6 +196,33 @@
         <div v-else class="empty">未生成安全审计。</div>
       </el-tab-pane>
 
+      <el-tab-pane label="复核清单" name="review">
+        <div class="diff-bar">
+          <el-radio-group v-model="reviewFilter" size="small">
+            <el-radio-button value="all">全部 {{ reviewCounts.total }}</el-radio-button>
+            <el-radio-button value="hm">仅高/中 {{ reviewCounts.high + reviewCounts.medium }}</el-radio-button>
+            <el-radio-button value="noflag">隐藏已标误报 {{ reviewCounts.total - reviewCounts.flagged }}</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="tip">置信分布：高 {{ reviewCounts.high }} · 中 {{ reviewCounts.medium }} · 低 {{ reviewCounts.low }} · 存疑 {{ reviewCounts.suspect }}（已标误报 {{ reviewCounts.flagged }}）。清单按置信降序，标记只移出展示，原始命中一律保留。</div>
+        <el-alert v-if="overFire.length" type="warning" :closable="false" class="of-alert">
+          <div class="of-head">以下命中规则在你复核时已在多个站点被判误报，疑似过报。可一键「全站忽略」（仅影响展示，不改动内置规则、不跨站隐藏真漏洞）：</div>
+          <div v-for="r in overFire" :key="r.sig" class="of-row">
+            <code>{{ r.kind }}:{{ r.key }}</code>
+            <span class="tip">在 {{ r.hostCount }} 个站点被标误报</span>
+            <el-button link type="primary" size="small" @click="promoteRuleGlobal(r.sig)">全站忽略</el-button>
+          </div>
+        </el-alert>
+        <el-table :data="reviewShown" size="small">
+          <el-table-column label="档位" width="110"><template #default="{ row }"><el-tag :type="confTag(row)" size="small">{{ tierCn(row.confidence.tier) }} · {{ row.confidence.score }}</el-tag></template></el-table-column>
+          <el-table-column label="类型" width="100"><template #default="{ row }">{{ kindCn(row.kind) }}</template></el-table-column>
+          <el-table-column prop="label" label="命中" show-overflow-tooltip />
+          <el-table-column prop="detail" label="位置 / 详情" show-overflow-tooltip />
+          <el-table-column label="操作" width="100"><template #default="{ row }"><el-button v-if="!row.flagged" link type="info" size="small" @click="markFp(row.kind, row.key)">标记误报</el-button><el-button v-else link type="primary" size="small" @click="unmarkFp(row.kind, row.key)">恢复</el-button></template></el-table-column>
+        </el-table>
+        <div v-if="!reviewCounts.total" class="empty">本次采集没有可复核的风险命中（JS 发现 / 敏感接口 / 主动探测均为空）。</div>
+      </el-tab-pane>
+
       <el-tab-pane label="主动探测" name="probes">
         <template v-if="bundle.probes && bundle.probes.performed">
           <h3>主动探测命中（当前站点 {{ probesSplit.kept.length }} 条{{ probesSplit.ignored.length ? '，另有 ' + probesSplit.ignored.length + ' 条已标记误报' : '' }}）</h3>
@@ -372,9 +399,10 @@ import Pager from './Pager.vue'
 import { listPackage, highRisk, mergeUser, validateImport, toSearchItems, CATEGORY_META, GLOBAL_QUERIES } from '../core/dork-library'
 import { riskLabel } from '../core/sensitive-rules'
 import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
-import { fpSignature, fpMapKey, fpSet, splitByFp, withFp, withoutFp, type FpKind } from '../core/false-positive'
+import { fpSignature, fpMapKey, fpSet, splitByFp, withFp, withoutFp, describeFp, type FpKind } from '../core/false-positive'
 import { diffBundles, diffSummary } from '../core/diff'
 import { confidenceOf, tierCn, tierCounts, type Tier } from '../core/confidence'
+import { buildReviewWorklist, worklistCounts, overFireRules } from '../core/review'
 import type { BundleMeta } from '../core/bundle-store'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
@@ -499,6 +527,27 @@ const securityTierLine = computed(() => {
   ;(['high', 'medium', 'low', 'suspect'] as Tier[]).forEach((t) => { if (c[t]) parts.push(tierCn(t) + ' ' + c[t]) })
   return parts.length ? '未标记误报命中的置信分布：' + parts.join(' · ') + '（分级只影响阅读优先级，原始命中一律保留）' : '暂无可分级命中'
 })
+
+// 复核清单：把三类命中汇成按置信降序的工作清单，并跨站聚合误报标记找"疑似过报"规则
+const reviewFilter = ref('all')
+const reviewList = computed(() => buildReviewWorklist(bundle.value, fpHost.value, fpSetVal.value))
+const reviewCounts = computed(() => worklistCounts(reviewList.value))
+const overFire = computed(() => overFireRules(fpList.value))
+const reviewShown = computed(() => {
+  const l = reviewList.value
+  if (reviewFilter.value === 'hm') return l.filter((x) => x.confidence.tier === 'high' || x.confidence.tier === 'medium')
+  if (reviewFilter.value === 'noflag') return l.filter((x) => !x.flagged)
+  return l
+})
+const KIND_CN: Record<string, string> = { finding: '密钥/发现', api: '敏感接口', probe: '探测命中', route: '路由' }
+function kindCn(kind: string): string { return KIND_CN[kind] || kind }
+function confTag(item: any): 'danger' | 'warning' | 'info' { return TIER_TAG[item.confidence.tier as Tier] }
+function promoteRuleGlobal(sig: string): void {
+  const kept = fpList.value.filter((k) => { const d = describeFp(k); return !(d.scope === 'site' && d.kind + ':' + d.key === sig) })
+  fpList.value = withFp(kept, '*|' + sig)
+  persistFp()
+  ElMessage.success('已全站忽略该规则（仅移出展示，不改内置规则）')
+}
 
 onMounted(async () => {
   const { lastBundle, settings, liveState, userDorks: ud, falsePositives: fp, bundleHistory: bh } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks', 'falsePositives', 'bundleHistory'])
@@ -651,6 +700,9 @@ h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
 .diff-sel { width: 260px; }
 .diff-table { margin-top: 10px; }
 .chip-tag { margin: 2px 4px 2px 0; font-family: var(--rx-font); }
+.of-alert { margin: 8px 0; }
+.of-head { margin-bottom: 6px; }
+.of-row { display: flex; align-items: center; gap: 10px; margin: 3px 0; }
 .muted { color: var(--rx-muted); font-size: 12px; }
 .subtabs { padding-top: 2px; }
 .subtabs :deep(.el-tabs__header) { margin-bottom: 10px; }
