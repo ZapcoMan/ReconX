@@ -56,6 +56,27 @@
         </el-table>
       </el-tab-pane>
 
+      <el-tab-pane label="采集对比" name="diff">
+        <div class="diff-bar">
+          <span class="tip">基线：</span>
+          <el-select v-model="baselineId" size="small" class="diff-sel" placeholder="选择一份历史采集作基线" @change="loadBaseline">
+            <el-option v-for="m in baselineOptions" :key="m.id" :label="fmt(m.collectedAt) + ' · ' + m.host" :value="m.id" />
+          </el-select>
+          <span v-if="baselineOptions.length === 0" class="tip">当前仅一份结果，需再采集同一目标后才能对比。</span>
+        </div>
+        <template v-if="diff">
+          <el-alert :title="diffSummary(diff)" :type="diff.sameHost ? 'info' : 'warning'" :closable="false" />
+          <div class="tip">现状＝本页这份（{{ fmt(diff.newerAt) }}），基线＝所选那份（{{ fmt(diff.olderAt) }}）。对比维度：路径类按 path、JS 发现按规则 id；命中原文各自保留不合并。</div>
+          <el-table :data="diff.categories" size="small" class="diff-table">
+            <el-table-column prop="name" label="类目" width="110" />
+            <el-table-column label="保留" width="70"><template #default="{ row }">{{ row.kept }}</template></el-table-column>
+            <el-table-column label="现状新增"><template #default="{ row }"><span v-if="!row.added.length" class="tip">—</span><el-tag v-for="p in row.added" :key="p" size="small" type="success" class="chip-tag">{{ p }}</el-tag></template></el-table-column>
+            <el-table-column label="相比基线消失"><template #default="{ row }"><span v-if="!row.removed.length" class="tip">—</span><el-tag v-for="p in row.removed" :key="p" size="small" type="info" class="chip-tag">{{ p }}</el-tag></template></el-table-column>
+          </el-table>
+        </template>
+        <div v-else-if="baselineOptions.length" class="empty">选择一份基线后即可看到两次采集的新增 / 消失。</div>
+      </el-tab-pane>
+
       <el-tab-pane label="技术栈" name="tech">
         <div class="tip">下表的置信度与证据在采集期计算，输入来自辅源 routerProbe 与响应头/资源指纹；框架与路由库的最终结论以「路由（双源）」分区的主源为准。</div>
         <el-table :data="techRows" size="small">
@@ -347,6 +368,8 @@ import { listPackage, highRisk, mergeUser, validateImport, toSearchItems, CATEGO
 import { riskLabel } from '../core/sensitive-rules'
 import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
 import { fpSignature, fpMapKey, fpSet, splitByFp, withFp, withoutFp, type FpKind } from '../core/false-positive'
+import { diffBundles, diffSummary } from '../core/diff'
+import type { BundleMeta } from '../core/bundle-store'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
 const fpList = ref<string[]>([])
@@ -438,8 +461,21 @@ function unmarkFp(kind: FpKind, key: string): void {
   persistFp()
 }
 
+// 采集对比：以本页这份为"现状"，从历史里挑一份作"基线"，纯只读算出新增 / 消失，不合并任一原始数据。
+const fmt = (ts: number): string => new Date(ts).toLocaleString('zh-CN')
+const hist = ref<BundleMeta[]>([])
+const baselineId = ref('')
+const baselineBundle = ref<any>(null)
+const baselineOptions = computed(() => hist.value.filter((m) => m.id !== (bundle.value && bundle.value.meta && bundle.value.meta.id)))
+const diff = computed(() => (baselineBundle.value && bundle.value ? diffBundles(baselineBundle.value, bundle.value) : null))
+async function loadBaseline(id: string): Promise<void> {
+  if (!id) { baselineBundle.value = null; return }
+  const r = await chrome.storage.local.get('bundle:' + id)
+  baselineBundle.value = (r as Record<string, any>)['bundle:' + id] || null
+}
+
 onMounted(async () => {
-  const { lastBundle, settings, liveState, userDorks: ud, falsePositives: fp } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks', 'falsePositives'])
+  const { lastBundle, settings, liveState, userDorks: ud, falsePositives: fp, bundleHistory: bh } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks', 'falsePositives', 'bundleHistory'])
   applyTheme(resolveTheme(settings && settings.theme))
   bundle.value = lastBundle || null
   live.value = liveState || { updatedAt: 0 }
@@ -447,6 +483,7 @@ onMounted(async () => {
   if (ud && Array.isArray(ud.general)) userDorks.general = ud.general
   if (ud && Array.isArray(ud.edu)) userDorks.edu = ud.edu
   if (Array.isArray(fp)) fpList.value = fp
+  if (Array.isArray(bh)) hist.value = bh
 })
 
 async function copyRaw(): Promise<void> {
@@ -584,6 +621,10 @@ function selectPre(e: MouseEvent): void {
 .u { flex: 1; color: var(--rx-muted); font-family: var(--rx-font); font-size: 12px; word-break: break-all; }
 h3 { margin: 18px 0 8px; font-size: 14px; color: var(--rx-text); }
 .tip { color: var(--rx-muted); font-size: 12px; margin-bottom: 8px; }
+.diff-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.diff-sel { width: 260px; }
+.diff-table { margin-top: 10px; }
+.chip-tag { margin: 2px 4px 2px 0; font-family: var(--rx-font); }
 .muted { color: var(--rx-muted); font-size: 12px; }
 .subtabs { padding-top: 2px; }
 .subtabs :deep(.el-tabs__header) { margin-bottom: 10px; }
