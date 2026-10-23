@@ -888,7 +888,7 @@ interface ReactRouterLike { routes?: unknown[]; navigate?: (...args: any[]) => u
             return;
         }
 
-        if (event.data.type === 'reconx_GET_ALL_IN_STATUS') {
+        if (event.data.type === 'RECONX_GET_ALL_IN_STATUS') {
             emitStatus();
         }
     });
