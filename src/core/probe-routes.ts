@@ -62,5 +62,5 @@ export async function probeRoutes(ctx: { routerInfo: RouterProbeResult; currentU
     await new Promise((res) => setTimeout(res, 200))
   }
   // routeFullUrls：全量拼接结果（不受探测 40 条上限约束），security-report 的「路由完整 URL」章节由此生效
-  return { applicable: true, framework: fw, routerKind: ri.routerKind || null, routerDetected: !!ri.routerDetected, total: items.length, sectionTitle: built.sectionTitle, routeFullUrls: built.items, routeProbes: probes }
+  return { applicable: true, framework: fw, routerKind: ri.routerKind || null, routerDetected: !!ri.routerDetected, total: (built.items || []).length, sectionTitle: built.sectionTitle, routeFullUrls: built.items, routeProbes: probes }
 }

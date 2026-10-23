@@ -67,16 +67,16 @@ export function collectFindings(bundle: any): FindingItem[] {
   const add = (o: FindingItem): void => {
     items.push(o)
   }
-  ;(bundle.js ? bundle.js.findings : []).concat(bundle.js ? bundle.js.inlineFindings : []).forEach((f: any) => {
+  ;((bundle.js && bundle.js.findings) || []).concat((bundle.js && bundle.js.inlineFindings) || []).forEach((f: any) => {
     if (rank(f.severity) <= rank('medium')) add({ category: '敏感信息泄露', title: f.name, level: f.severity, target: f.url || 'inline', evidence: (f.samples || []).map((s: any) => s.value), description: f.desc })
   })
-  ;(bundle.headers ? bundle.headers.missing : []).forEach((m: any) => {
+  ;((bundle.headers && bundle.headers.missing) || []).forEach((m: any) => {
     if (rank(m.level) <= rank('medium')) add({ category: '安全头', title: m.header + ' 缺失', level: m.level, evidence: [m.advice] })
   })
-  ;(bundle.headers ? bundle.headers.advisories : []).forEach((a: any) => {
+  ;((bundle.headers && bundle.headers.advisories) || []).forEach((a: any) => {
     if (rank(a.level) <= rank('medium')) add({ category: '配置', title: a.type, level: a.level, detail: a.detail, evidence: [a.advice] })
   })
-  ;(bundle.js ? bundle.js.sourcemaps : []).forEach((s: any) => add({ category: '源码泄露', title: 'Source Map 可还原源码', level: 'low', target: s.from, evidence: [s.map] }))
+  ;((bundle.js && bundle.js.sourcemaps) || []).forEach((s: any) => add({ category: '源码泄露', title: 'Source Map 可还原源码', level: 'low', target: s.from, evidence: [s.map] }))
   if (bundle.probes && bundle.probes.performed && bundle.probes.results) {
     bundle.probes.results.filter((p: any) => p.matched).forEach((p: any) => add({ category: '信息泄露', title: p.desc, level: p.severity, target: p.path, evidence: ['HTTP ' + p.status + ' / ' + p.bytes + ' bytes'] }))
   }
@@ -316,9 +316,9 @@ export function exportMulti(bundles: any[], fmt: string): void {
     merged._targets.push({ host: b.meta.host, url: b.meta.url, time: b.meta.collectedAt })
     merged.tech = merged.tech.concat((b.tech || []).map((t: any) => Object.assign({ host: b.meta.host }, t)))
     merged.waf = merged.waf.concat((b.waf || []).map((t: any) => Object.assign({ host: b.meta.host }, t)))
-    merged.js.findings = merged.js.findings.concat(b.js ? b.js.findings : [])
-    merged.js.sourcemaps = merged.js.sourcemaps.concat(b.js ? b.js.sourcemaps : [])
-    merged.headers.missing = merged.headers.missing.concat(b.headers ? b.headers.missing : [])
+    merged.js.findings = merged.js.findings.concat((b.js && b.js.findings) || [])
+    merged.js.sourcemaps = merged.js.sourcemaps.concat((b.js && b.js.sourcemaps) || [])
+    merged.headers.missing = merged.headers.missing.concat((b.headers && b.headers.missing) || [])
     if (b.links) {
       merged.links.total += b.links.total
       merged.links.sameOriginCount += b.links.sameOriginCount
