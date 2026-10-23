@@ -380,7 +380,7 @@
         </el-tabs>
       </el-tab-pane>
 
-      <el-tab-pane label="原始 JSON" name="raw">
+      <el-tab-pane label="原始 JSON" name="raw" lazy>
         <pre class="rawjson" @click="selectPre">{{ rawJson }}</pre>
       </el-tab-pane>
     </el-tabs>
@@ -630,21 +630,30 @@ function onExport(fmt: string): void {
   else if (fmt === 'all') exportBundle(view, ['json', 'csv', 'md', 'src', 'html', 'txt'])
   else exportBundle(view, fmt)
 }
+let picking = false
 async function onFilesPicked(e: Event): Promise<void> {
+  if (picking) return
+  picking = true
   const input = e.target as HTMLInputElement
-  const files = Array.from(input.files || [])
-  const picked: any[] = []
-  const bad: string[] = []
-  for (const f of files) {
-    // parseJson：安全解析，非法 JSON 只标记失败文件不中断
-    const parsed = parseJson(await f.text())
-    if (parsed.ok && parsed.data && parsed.data.meta) picked.push(parsed.data)
-    else bad.push(f.name)
+  try {
+    const files = Array.from(input.files || [])
+    const picked: any[] = []
+    const bad: string[] = []
+    for (const f of files) {
+      // 文件读取本身可能失败（被移动/锁定），单独兜住不让整批中断
+      let txt = ''
+      try { txt = await f.text() } catch { bad.push(f.name); continue }
+      const parsed = parseJson(txt)
+      if (parsed.ok && parsed.data && parsed.data.meta) picked.push(parsed.data)
+      else bad.push(f.name)
+    }
+    if (!picked.length) { ElMessage.error(bad.length ? '这些文件不是采集结果 JSON：' + bad.join('、') : '未选择有效文件'); return }
+    exportMulti([exportView(), ...picked], 'md')
+    ElMessage.success('已聚合导出 ' + (picked.length + 1) + ' 份结果' + (bad.length ? '，跳过 ' + bad.length + ' 个无效文件' : ''))
+  } finally {
+    input.value = ''
+    picking = false
   }
-  input.value = ''
-  if (!picked.length) { ElMessage.error(bad.length ? '这些文件不是采集结果 JSON：' + bad.join('、') : '未选择有效文件'); return }
-  exportMulti([exportView(), ...picked], 'md')
-  ElMessage.success('已聚合导出 ' + (picked.length + 1) + ' 份结果' + (bad.length ? '，跳过 ' + bad.length + ' 个无效文件' : ''))
 }
 function importDorks(): void {
   const parsed = parseJson(dorkImportText.value)
