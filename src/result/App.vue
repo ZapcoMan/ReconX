@@ -266,6 +266,7 @@
 
       <el-tab-pane label="实时回传" name="live">
         <div class="tip">本页数据由页面脚本（detector / api-extractor / all-in）实时回传，与采集结果分键存储。回传站点：<b>{{ live.siteKey || '未知' }}</b> · 最近更新：{{ liveTime }}<span v-if="live.apiProgress"> · 进度：<b>{{ live.apiProgress }}</b></span></div>
+        <div class="tip" style="margin-bottom:10px">⚠ 实时回传来自页面主世界脚本，ReconX 已做同源校验 + 注入令牌 + 载荷大小守卫抬高伪造门槛，但同页脚本理论上仍可伪造这些数字，故实时数据仅作过程线索、不作定论，最终以「采集结果」与导出文件为准。</div>
 
         <h3>框架检测</h3>
         <el-descriptions v-if="live.frameworkDetection" :column="3" border size="small">

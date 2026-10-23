@@ -212,6 +212,13 @@
         try {
             const data = event.data as Record<string, unknown>
             if (!data || typeof data !== 'object') return
+            // 载荷大小守卫：MAIN world 回传通道无法绝对防伪（页面可读注入脚本可读的一切），
+            // 但至少挡住用超大 result/status 灌爆 liveState 与 chrome.storage 的伪造/异常。
+            const payload = data.result != null ? data.result : data.status
+            if (payload != null && typeof payload === 'object' && JSON.stringify(payload).length > 2000000) {
+                console.warn('[ReconX] 回传载荷过大，已丢弃')
+                return
+            }
 
             // ---- 类型 1：框架检测结果（须来自本次注入） ----
             if (data.type === 'RECONX_FRAMEWORK_DETECTION_RESULT' && isOurInjection(data)) {
