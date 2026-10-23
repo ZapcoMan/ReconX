@@ -114,6 +114,27 @@
       </div>
     </section>
 
+    <section class="block">
+      <div class="block-head"><h2>误报标记管理</h2><span class="hint">在结果页「标记误报」的条目集中在此。标记只影响展示与计数，原始命中始终保留</span></div>
+      <el-table v-if="fpRows.length" :data="fpRows" size="small" class="hosts">
+        <el-table-column label="范围" width="80"><template #default="{ row }"><span class="host">{{ row.scope === 'global' ? '全站' : '本站' }}</span></template></el-table-column>
+        <el-table-column label="主机" width="220"><template #default="{ row }"><span class="host">{{ row.host }}</span></template></el-table-column>
+        <el-table-column label="类型" width="110"><template #default="{ row }"><span class="note">{{ kindLabel(row.kind) }}</span></template></el-table-column>
+        <el-table-column label="命中"><template #default="{ row }"><span class="mono">{{ row.key }}</span></template></el-table-column>
+        <el-table-column label="" width="150" align="right">
+          <template #default="{ row }">
+            <el-button v-if="row.scope === 'site'" size="small" text @click="promoteFp(row.mapKey)">升为全站</el-button>
+            <el-button size="small" text type="danger" @click="undoFp(row.mapKey)">撤销</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-else class="empty">尚无误报标记。在结果页对某条命中点「标记误报」后，会在此统一查看与撤销。</div>
+      <div v-if="fpRows.length" class="hist-foot">
+        <span class="hint">共 {{ fpRows.length }} 条 · 只存在本机 <code>chrome.storage.local</code>；「本站」标记仅对同主机生效，「全站」跨所有站点生效</span>
+        <el-button size="small" text type="danger" @click="clearFps">清空全部标记</el-button>
+      </div>
+    </section>
+
     <footer class="legal">
       ReconX 仅用于你拥有或已获书面授权的目标（渗透测试 / 漏洞赏金 / OSINT / 自查）。命中皆为线索，需人工确认，且一律以原文留存并进入导出文件。所有数据仅保存在本机浏览器，不外传。请遵守目标站点条款与当地法律。
     </footer>
@@ -130,6 +151,7 @@ import { applyTheme, resolveTheme, effectiveTheme } from '../shared/theme'
 import { HISTORY_LIMIT, findInIndex, describeMeta, type BundleMeta } from '../core/bundle-store'
 import { parseJson, exportJson } from '../core/exporter'
 import { BUILTIN_PATTERN_COUNT, BUILTIN_PROBE_COUNT, validatePatternImport, validateProbeImport, toBackupPatterns } from '../core/user-rules'
+import { describeFp, withFp, withoutFp } from '../core/false-positive'
 
 const DEFAULTS: Settings = { activeProbe: false, maxJsFiles: 25, maxConcurrent: 5, theme: 'dark', linkBlacklist: [], userPatterns: [], userProbes: [] }
 
@@ -234,12 +256,43 @@ async function clearHistory(): Promise<void> {
   ElMessage.success('已清空采集历史')
 }
 
+// 误报标记管理：结果页「标记误报」写入 chrome.storage.local.falsePositives（mapKey 字符串集合）。
+// 此处在设置页集中查看/撤销/升全站；撤销只移除标记，原始 bundle 命中一律保留。
+const fps = ref<string[]>([])
+const fpRows = computed(() => fps.value.map((k) => ({ mapKey: k, ...describeFp(k) })))
+const KIND_LABEL: Record<string, string> = { api: '敏感接口', probe: '主动探测', finding: '密钥命中', route: '路由' }
+const kindLabel = (kind: string): string => KIND_LABEL[kind] || kind
+function persistFps(): void {
+  chrome.storage.local.set({ falsePositives: JSON.parse(JSON.stringify(fps.value)) })
+}
+function undoFp(mapKey: string): void {
+  fps.value = withoutFp(fps.value, mapKey)
+  persistFps()
+  ElMessage.success('已撤销该误报标记')
+}
+function promoteFp(mapKey: string): void {
+  const i = mapKey.indexOf('|')
+  const sig = i < 0 ? mapKey : mapKey.slice(i + 1)
+  fps.value = withFp(withoutFp(fps.value, mapKey), '*|' + sig)
+  persistFps()
+  ElMessage.success('已升级为全站标记，跨站点生效')
+}
+async function clearFps(): Promise<void> {
+  try {
+    await ElMessageBox.confirm('清空全部误报标记？原始命中数据不受影响，只是恢复全部展示。', '清空确认', { type: 'warning', confirmButtonText: '清空全部', cancelButtonText: '取消' })
+  } catch { return }
+  fps.value = []
+  persistFps()
+  ElMessage.success('已清空误报标记')
+}
+
 const fmt = (ts: number): string => new Date(ts).toLocaleString('zh-CN')
 
 onMounted(async () => {
-  const { scope, settings: s } = await chrome.storage.local.get(['scope', 'settings'])
+  const { scope, settings: s, falsePositives: fp } = await chrome.storage.local.get(['scope', 'settings', 'falsePositives'])
   if (scope && Array.isArray(scope.hosts)) hosts.value = scope.hosts
   Object.assign(settings, { ...DEFAULTS }, s || {})
+  if (Array.isArray(fp)) fps.value = fp
   blacklistText.value = (settings.linkBlacklist || []).join('\n')
   applyTheme(resolveTheme(settings.theme))
   syncEffective()

@@ -148,14 +148,24 @@
       <el-tab-pane label="安全" name="security">
         <template v-if="bundle.security">
           <el-alert :title="'整体风险：' + riskLabel(bundle.security.summary.overallRisk) + ' · 敏感API ' + bundle.security.summary.sensitiveApiCount + ' · 待核验路由 ' + bundle.security.summary.unprotectedRoutes + ' · 预期公开 ' + (bundle.security.summary.publicRoutes || 0) + ' 条未计入'" type="warning" :closable="false" />
-          <h3>敏感接口线索（共 {{ (bundle.security.sensitiveApis || []).length }} 条，全部保留可翻页查看）</h3>
-          <el-table :data="paged('sensitive', bundle.security.sensitiveApis)" size="small">
+          <h3>敏感接口线索（当前站点 {{ sensitiveSplit.kept.length }} 条{{ sensitiveSplit.ignored.length ? '，另有 ' + sensitiveSplit.ignored.length + ' 条已标记误报（保留在下方，不参与展示计数）' : '' }}）</h3>
+          <el-table :data="paged('sensitive', sensitiveSplit.kept)" size="small">
             <el-table-column prop="category" label="类别" width="120" />
             <el-table-column prop="riskLevel" label="风险" width="90" />
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="source" label="来源" width="90" />
+            <el-table-column label="误报" width="90"><template #default="{ row }"><el-button link type="info" size="small" @click="markFp('api', row.path)">标记误报</el-button></template></el-table-column>
           </el-table>
-          <Pager v-model:page="pg.sensitive.page" v-model:size="pg.sensitive.size" :total="(bundle.security.sensitiveApis || []).length" />
+          <Pager v-model:page="pg.sensitive.page" v-model:size="pg.sensitive.size" :total="sensitiveSplit.kept.length" />
+          <el-collapse v-if="sensitiveSplit.ignored.length">
+            <el-collapse-item :title="'已标记误报 ' + sensitiveSplit.ignored.length + ' 条（原始命中仍保留）'">
+              <el-table :data="sensitiveSplit.ignored" size="small">
+                <el-table-column prop="category" label="类别" width="120" />
+                <el-table-column prop="path" label="路径" />
+                <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" size="small" @click="unmarkFp('api', row.path)">恢复</el-button></template></el-table-column>
+              </el-table>
+            </el-collapse-item>
+          </el-collapse>
           <h3>建议</h3>
           <ul><li v-for="(r, i) in bundle.security.recommendations || []" :key="i">{{ r }}</li></ul>
         </template>
@@ -164,13 +174,24 @@
 
       <el-tab-pane label="主动探测" name="probes">
         <template v-if="bundle.probes && bundle.probes.performed">
-          <el-table :data="bundle.probes.results || []" size="small">
+          <h3>主动探测命中（当前站点 {{ probesSplit.kept.length }} 条{{ probesSplit.ignored.length ? '，另有 ' + probesSplit.ignored.length + ' 条已标记误报' : '' }}）</h3>
+          <el-table :data="probesSplit.kept" size="small">
             <el-table-column prop="path" label="路径" />
             <el-table-column prop="status" label="状态" width="80" />
             <el-table-column prop="bytes" label="字节" width="90" />
             <el-table-column label="命中" width="80"><template #default="{ row }">{{ row.matched ? '命中' : '' }}</template></el-table-column>
             <el-table-column prop="desc" label="说明" />
+            <el-table-column label="误报" width="90"><template #default="{ row }"><el-button link type="info" size="small" @click="markFp('probe', row.path)">标记误报</el-button></template></el-table-column>
           </el-table>
+          <el-collapse v-if="probesSplit.ignored.length">
+            <el-collapse-item :title="'已标记误报 ' + probesSplit.ignored.length + ' 条（原始命中仍保留）'">
+              <el-table :data="probesSplit.ignored" size="small">
+                <el-table-column prop="path" label="路径" />
+                <el-table-column prop="status" label="状态" width="80" />
+                <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" size="small" @click="unmarkFp('probe', row.path)">恢复</el-button></template></el-table-column>
+              </el-table>
+            </el-collapse-item>
+          </el-collapse>
           <template v-if="bundle.probes.routes && bundle.probes.routes.applicable">
             <h3>前端路由可达性（{{ bundle.probes.routes.framework }} · {{ bundle.probes.routes.routerKind }}）</h3>
             <div class="tip">共拼接 {{ (bundle.probes.routes.routeFullUrls || []).length }} 条完整路由 URL，探测其中前 {{ (bundle.probes.routes.routeProbes || []).length }} 条；全量列表会写入「综合报告 MD」的路由完整 URL 章节。</div>
@@ -325,8 +346,10 @@ import Pager from './Pager.vue'
 import { listPackage, highRisk, mergeUser, validateImport, toSearchItems, CATEGORY_META, GLOBAL_QUERIES } from '../core/dork-library'
 import { riskLabel } from '../core/sensitive-rules'
 import { buildAssetMatrix, buildExtraSources } from '../core/asset-search'
+import { fpSignature, fpMapKey, fpSet, splitByFp, withFp, withoutFp, type FpKind } from '../core/false-positive'
 const bundle = ref<any>(null)
 const live = ref<any>({ updatedAt: 0 })
+const fpList = ref<string[]>([])
 const tab = ref('overview')
 
 const techRows = computed(() => {
@@ -393,14 +416,37 @@ const routeMatrix = computed(() => {
   return Array.from(map.values()).sort((a, b) => (Number(b.inPrimary) - Number(a.inPrimary)) || String(a.path).localeCompare(String(b.path)))
 })
 
+// 误报反馈：标记只影响展示与计数，原始命中一律保留。默认按「站点+签名」维度，只隐藏本站点的该条误报。
+const fpSetVal = computed(() => fpSet(fpList.value))
+const fpHost = computed(() => (bundle.value && bundle.value.meta && bundle.value.meta.host) || '')
+const sensitiveSplit = computed(() =>
+  splitByFp(bundle.value && bundle.value.security && bundle.value.security.sensitiveApis, fpHost.value, fpSetVal.value, (x: any) => fpSignature('api', x && x.path))
+)
+const probesSplit = computed(() =>
+  splitByFp(bundle.value && bundle.value.probes && bundle.value.probes.results, fpHost.value, fpSetVal.value, (x: any) => fpSignature('probe', x && x.path))
+)
+function persistFp(): void {
+  chrome.storage.local.set({ falsePositives: fpList.value })
+}
+function markFp(kind: FpKind, key: string): void {
+  fpList.value = withFp(fpList.value, fpMapKey(fpHost.value, fpSignature(kind, key), 'site'))
+  persistFp()
+  ElMessage.success('已标记为误报（仅本站点，原始命中仍保留）')
+}
+function unmarkFp(kind: FpKind, key: string): void {
+  fpList.value = withoutFp(fpList.value, fpMapKey(fpHost.value, fpSignature(kind, key), 'site'))
+  persistFp()
+}
+
 onMounted(async () => {
-  const { lastBundle, settings, liveState, userDorks: ud } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks'])
+  const { lastBundle, settings, liveState, userDorks: ud, falsePositives: fp } = await chrome.storage.local.get(['lastBundle', 'settings', 'liveState', 'userDorks', 'falsePositives'])
   applyTheme(resolveTheme(settings && settings.theme))
   bundle.value = lastBundle || null
   live.value = liveState || { updatedAt: 0 }
   assetDomain.value = (lastBundle && lastBundle.meta && lastBundle.meta.host) || ''
   if (ud && Array.isArray(ud.general)) userDorks.general = ud.general
   if (ud && Array.isArray(ud.edu)) userDorks.edu = ud.edu
+  if (Array.isArray(fp)) fpList.value = fp
 })
 
 async function copyRaw(): Promise<void> {
